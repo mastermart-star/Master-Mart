@@ -1,0 +1,132 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-heading: "Space Grotesk", sans-serif;
+
+  /* Master Mart brand orange palette overriding emerald for instant matching UI action pieces */
+  --color-emerald-50: #FFFDF9;
+  --color-emerald-100: #FFF3E5;
+  --color-emerald-200: #FFE1BB;
+  --color-emerald-300: #FFC588;
+  --color-emerald-400: #FFA84D;
+  --color-emerald-500: #FF8A00; /* Master Mart Logo Brand Orange */
+  --color-emerald-600: #E07300;
+  --color-emerald-700: #B85B00;
+  --color-emerald-800: #8F4400;
+  --color-emerald-900: #662E00;
+  --color-emerald-950: #421D00;
+
+  /* Master Mart deep navy palette overriding slate dark values for premium theme backgrounds */
+  --color-slate-950: #06151E; /* Deep rich dark navy */
+  --color-slate-900: #0B1E28; /* Elegant background navy */
+  --color-slate-850: #112B39; /* Card highlights */
+  --color-slate-800: #193B4E; /* Borders and subtle controls */
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #f8fafc; /* light theme fallback slate-50 */
+  color: #1e293b; /* light theme slate-800 */
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+html.dark body {
+  background-color: #06151E; /* dark theme slate-950/deep navy */
+  color: #f1f5f9; /* dark theme slate-100 */
+}
+
+/* Custom scrollbar to keep it sleek and lightweight */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(16, 185, 129, 0.2);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(16, 185, 129, 0.4);
+}
+
+/* Hide scrollbar for Chrome, Safari and Opera */
+.scrollbar-none::-webkit-scrollbar {
+  display: none !important;
+}
+
+/* Hide scrollbar for IE, Edge and Firefox */
+.scrollbar-none {
+  -ms-overflow-style: none !important;  /* IE and Edge */
+  scrollbar-width: none !important;  /* Firefox */
+}
+
+/* Custom thin horizontal scrollbar for mobile categories footer */
+.scrollbar-thin::-webkit-scrollbar {
+  height: 4px !important;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: rgba(226, 232, 240, 0.5) !important; /* slate-200 */
+  border-radius: 9999px !important;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #10b981 !important; /* emerald-500 */
+  border-radius: 9999px !important;
+}
+html.dark .scrollbar-thin::-webkit-scrollbar-track {
+  background: rgba(30, 41, 59, 0.6) !important; /* slate-800 */
+}
+html.dark .scrollbar-thin::-webkit-webkit-scrollbar-thumb {
+  background: #059669 !important; /* emerald-600 */
+}
+
+/* Print Stylesheet for direct window.print() support */
+@media print {
+  @page {
+    size: A4 portrait !important;
+    margin: 2mm 3mm !important;
+  }
+  /* Hide the main React application */
+  #root {
+    display: none !important;
+  }
+  /* Show only our print section */
+  #print-section {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: flex-start !important;
+    align-items: center !important;
+    gap: 4px !important;
+    position: absolute !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    top: 0 !important;
+    width: 100% !important;
+    max-width: 520px !important;
+    height: auto !important;
+    min-height: unset !important;
+    max-height: unset !important;
+    margin: 0 !important;
+    padding: 2px 0 !important;
+    background: #fff !important;
+    color: #000 !important;
+    box-sizing: border-box !important;
+    page-break-inside: avoid !important;
+    page-break-after: avoid !important;
+    page-break-before: avoid !important;
+  }
+  #print-section * {
+    visibility: visible !important;
+    box-sizing: border-box !important;
+  }
+}
+
+#print-section {
+  display: none;
+}
+

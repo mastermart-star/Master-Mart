@@ -1,0 +1,6 @@
+{
+  "name": "Master Mart",
+  "description": "Blinkit-style instant delivery e-commerce platform with search, dark mode, delivery tracking, customer reviews, card/mobile banking payments, and simulated mobile app view.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
