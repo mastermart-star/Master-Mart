@@ -11,8 +11,6 @@ export interface Product {
   discountPrice?: number;
   stock: number;
   isVeg?: boolean;
-  descriptionEn?: string;
-  descriptionBn?: string;
 }
 
 export interface Category {

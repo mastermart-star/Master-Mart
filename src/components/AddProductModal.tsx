@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Plus, Sparkles, Image, Check, ShoppingBag, Layers, Percent, Heart, Upload } from 'lucide-react';
+import { X, Plus, Sparkles, Image, Check, ShoppingBag, Layers, Percent, Heart } from 'lucide-react';
 import { Product, Category } from '../types';
 
 interface AddProductModalProps {
@@ -96,8 +96,6 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
 }) => {
   const [nameEn, setNameEn] = useState('');
   const [nameBn, setNameBn] = useState('');
-  const [descriptionEn, setDescriptionEn] = useState('');
-  const [descriptionBn, setDescriptionBn] = useState('');
   const [category, setCategory] = useState(categories[1]?.id || 'vegetables-fruits');
   const [price, setPrice] = useState<number>(100);
   const [discountPrice, setDiscountPrice] = useState<number | ''>('');
@@ -109,56 +107,6 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
-  const [isDragging, setIsDragging] = useState(false);
-
-  const handleFile = (file: File) => {
-    if (!file.type.startsWith('image/')) {
-      setErrorMsg(lang === 'en' ? 'Please upload an image file (PNG/JPG/WEBP/GIF)!' : 'দয়া করে একটি ইমেজ ফাইল (PNG/JPG/WEBP/GIF) আপলোড করুন!');
-      return;
-    }
-    if (file.size > 1500000) {
-      setErrorMsg(lang === 'en' ? 'Image size must be less than 1.5MB! Or paste a direct image URL.' : 'ছবির সাইজ ১.৫ মেগাবাইটের কম হতে হবে! অথবা সরাসরি ছবির লিংক পেস্ট করুন।');
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (uploadEvent) => {
-      if (uploadEvent.target?.result) {
-        setImage(uploadEvent.target.result as string);
-        setSuccessMsg(lang === 'en' ? 'Image uploaded and processed successfully!' : 'ছবিটি সফলভাবে আপলোড এবং প্রসেস করা হয়েছে!');
-        setTimeout(() => setSuccessMsg(''), 3500);
-      }
-    };
-    reader.onerror = () => {
-      setErrorMsg(lang === 'en' ? 'Failed to read image file.' : 'ইমেজ ফাইল পড়তে ব্যর্থ হয়েছে।');
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = () => {
-    setIsDragging(false);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) {
-      handleFile(file);
-    }
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      handleFile(file);
-    }
-  };
 
   // Auto-detect a close preset image match and set appropriate dietary defaults when category changes
   const handleCategoryChange = (catId: string) => {
@@ -206,15 +154,16 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
       nameBn: nameBn.trim(),
       category,
       price: Number(price),
-      discountPrice: discountPrice !== '' ? Number(discountPrice) : undefined,
       unitEn: unitEn.trim() || '1 kg',
       unitBn: unitBn.trim() || '১ কেজি',
       rating: 5.0, // New products start with perfect 5.0 rating
       image: image.trim(),
       stock: Number(stock) || 10,
-      isVeg: dietaryType === 'none' ? undefined : (dietaryType === 'veg'),
-      descriptionEn: descriptionEn.trim() || undefined,
-      descriptionBn: descriptionBn.trim() || undefined
+      // Only include these optional fields when they actually have a value.
+      // Firestore rejects `undefined` field values, so we omit the key entirely
+      // instead of setting it to undefined (previously this silently broke Add Product).
+      ...(discountPrice !== '' ? { discountPrice: Number(discountPrice) } : {}),
+      ...(dietaryType !== 'none' ? { isVeg: dietaryType === 'veg' } : {})
     };
 
     try {
@@ -224,8 +173,6 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
       // Clear fields
       setNameEn('');
       setNameBn('');
-      setDescriptionEn('');
-      setDescriptionBn('');
       setDiscountPrice('');
       
       setTimeout(() => {
@@ -333,34 +280,6 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
                 placeholder="যেমন: তাজা লাল স্ট্রবেরি"
                 className="w-full rounded-xl border border-slate-150 bg-slate-50/50 px-3.5 py-2.5 text-xs text-slate-900 outline-hidden focus:border-emerald-500 focus:bg-white dark:border-slate-800 dark:bg-slate-950 dark:text-white dark:focus:border-emerald-500 font-bold"
                 required
-              />
-            </div>
-          </div>
-
-          {/* Product Description Inputs */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-[11px] font-black uppercase text-slate-400 mb-1.5 tracking-wider">
-                Product Description (English) - Optional
-              </label>
-              <textarea
-                value={descriptionEn}
-                onChange={(e) => setDescriptionEn(e.target.value)}
-                placeholder="Describe your product details..."
-                rows={3}
-                className="w-full rounded-xl border border-slate-150 bg-slate-50/50 px-3.5 py-2.5 text-xs text-slate-900 outline-hidden focus:border-emerald-500 focus:bg-white dark:border-slate-800 dark:bg-slate-950 dark:text-white dark:focus:border-emerald-500 font-medium resize-none"
-              />
-            </div>
-            <div>
-              <label className="block text-[11px] font-black uppercase text-slate-400 mb-1.5 tracking-wider">
-                পণ্যের বিবরণ (বাংলা) - ঐচ্ছিক
-              </label>
-              <textarea
-                value={descriptionBn}
-                onChange={(e) => setDescriptionBn(e.target.value)}
-                placeholder="পণ্য সম্পর্কে বিস্তারিত লিখুন..."
-                rows={3}
-                className="w-full rounded-xl border border-slate-150 bg-slate-50/50 px-3.5 py-2.5 text-xs text-slate-900 outline-hidden focus:border-emerald-500 focus:bg-white dark:border-slate-800 dark:bg-slate-950 dark:text-white dark:focus:border-emerald-500 font-medium resize-none"
               />
             </div>
           </div>
@@ -488,8 +407,8 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="md:col-span-1">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
               <label className="block text-[11px] font-black uppercase text-slate-400 mb-1.5 tracking-wider">
                 {lang === 'en' ? 'Stock Level *' : 'স্টক পরিমাণ *'}
               </label>
@@ -502,7 +421,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
                 required
               />
             </div>
-            <div className="md:col-span-2">
+            <div>
               <label className="block text-[11px] font-black uppercase text-slate-400 mb-1.5 tracking-wider">
                 {lang === 'en' ? 'Custom Image URL' : 'কাস্টম ইমেজ লিংক'}
               </label>
@@ -513,70 +432,6 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
                 placeholder="https://images.unsplash.com/..."
                 className="w-full rounded-xl border border-slate-150 bg-slate-50/50 px-3.5 py-2.5 text-xs text-slate-900 outline-hidden focus:border-emerald-500 focus:bg-white dark:border-slate-800 dark:bg-slate-950 dark:text-white dark:focus:border-emerald-500 font-mono text-[10px]"
               />
-            </div>
-          </div>
-
-          {/* Product Image Manager */}
-          <div className="border border-slate-100 dark:border-slate-800 rounded-2xl p-4.5 bg-slate-50/30 dark:bg-slate-950/20 space-y-3">
-            <label className="block text-[11px] font-black uppercase text-slate-400 tracking-wider">
-              {lang === 'en' ? 'Product Image Manager' : 'পণ্যের ছবি ম্যানেজার'}
-            </label>
-            
-            <div className="flex flex-col sm:flex-row gap-4 items-center">
-              {/* Live Image Preview Frame */}
-              <div className="relative h-28 w-28 rounded-2xl overflow-hidden border-2 border-slate-100 dark:border-slate-850 bg-slate-100 dark:bg-slate-900 shrink-0 shadow-inner flex items-center justify-center group">
-                {image ? (
-                  <>
-                    <img
-                      src={image}
-                      alt="Preview"
-                      className="w-full h-full object-cover group-hover:scale-105 transition-all duration-300"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1594782078968-2b07656d7bb2?auto=format&fit=crop&q=80&w=200';
-                      }}
-                      referrerPolicy="no-referrer"
-                    />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <span className="text-[10px] font-bold text-white uppercase tracking-wider bg-black/60 px-2 py-0.5 rounded-md">
-                        {lang === 'en' ? 'Active' : 'সক্রিয়'}
-                      </span>
-                    </div>
-                  </>
-                ) : (
-                  <div className="text-slate-400 text-center p-2">
-                    <Image className="h-7 w-7 mx-auto mb-1 opacity-50" />
-                    <span className="text-[9px] font-semibold uppercase block leading-tight">No Image</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Drag and Drop File Upload Zone */}
-              <div
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                className={`flex-1 w-full h-28 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center p-4 transition-all duration-200 text-center cursor-pointer select-none relative ${
-                  isDragging
-                    ? 'border-emerald-500 bg-emerald-500/5 ring-4 ring-emerald-500/10'
-                    : 'border-slate-200 bg-slate-50 hover:bg-slate-100 hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900/40 dark:hover:bg-slate-900 dark:hover:border-slate-700'
-                }`}
-                onClick={() => document.getElementById('product-file-upload')?.click()}
-              >
-                <input
-                  type="file"
-                  id="product-file-upload"
-                  accept="image/*"
-                  onChange={handleFileChange}
-                  className="hidden"
-                />
-                <Upload className={`h-6 w-6 mb-1.5 transition-transform duration-200 ${isDragging ? 'text-emerald-500 scale-110' : 'text-slate-400 dark:text-slate-500'}`} />
-                <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  {lang === 'en' ? 'Drag & Drop your image file here' : 'এখানে আপনার ছবি ড্র্যাগ করে ছেড়ে দিন'}
-                </p>
-                <p className="text-[10px] font-medium text-slate-400 mt-1">
-                  {lang === 'en' ? 'Or click to browse from device (Max 1.5MB)' : 'অথবা ডিভাইস থেকে ফাইল সিলেক্ট করতে ক্লিক করুন (সর্বোচ্চ ১.৫ MB)'}
-                </p>
-              </div>
             </div>
           </div>
 

@@ -31,8 +31,6 @@ export const ProductCard: React.FC<ProductCardProps> = ({
     ? Math.round(((product.price - (product.discountPrice || 0)) / product.price) * 100)
     : 0;
 
-  const remainingStock = Math.max(0, product.stock - quantityInCart);
-
   return (
     <motion.div
       layout
@@ -124,10 +122,10 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           <span className="text-xs text-slate-500 dark:text-slate-400">
             {lang === 'en' ? product.unitEn : product.unitBn}
           </span>
-          {remainingStock > 0 ? (
+          {product.stock > 0 ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              {lang === 'en' ? `${remainingStock} In Stock` : `${remainingStock} স্টকে আছে`}
+              {lang === 'en' ? `${product.stock} In Stock` : `${product.stock} স্টকে আছে`}
             </span>
           ) : (
             <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700 dark:bg-rose-950/30 dark:text-rose-400">
@@ -170,13 +168,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({
               </button>
               <span className="text-xs font-bold">{quantityInCart}</span>
               <button
-                onClick={() => {
-                  if (quantityInCart < product.stock) {
-                    onAddToCart(product);
-                  }
-                }}
-                disabled={quantityInCart >= product.stock}
-                className="flex h-5 w-5 items-center justify-center rounded-full transition-colors hover:bg-emerald-200/55 dark:hover:bg-emerald-900/50 disabled:opacity-30 disabled:cursor-not-allowed"
+                onClick={() => onAddToCart(product)}
+                className="flex h-5 w-5 items-center justify-center rounded-full transition-colors hover:bg-emerald-200/55 dark:hover:bg-emerald-900/50"
                 id={`cart-increase-${product.id}`}
               >
                 <Plus className="h-3 w-3" />

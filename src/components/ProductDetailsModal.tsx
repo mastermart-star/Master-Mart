@@ -33,7 +33,6 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
   const [successMsg, setSuccessMsg] = useState('');
 
   // Calculate stats
-  const remainingStock = Math.max(0, product.stock - quantityInCart);
   const productReviews = reviews.filter((r) => r.productId === product.id);
   const totalReviews = productReviews.length;
   const avgRating = totalReviews > 0
@@ -56,13 +55,6 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
   };
 
   const getProductDescription = (prod: Product, l: 'en' | 'bn', d: any) => {
-    if (l === 'en' && prod.descriptionEn) {
-      return prod.descriptionEn;
-    }
-    if (l === 'bn' && prod.descriptionBn) {
-      return prod.descriptionBn;
-    }
-
     const category = prod.category || 'all';
     const nameLower = (prod.nameEn || '').toLowerCase();
 
@@ -236,10 +228,10 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
 
               {/* Stock Status Badge */}
               <div className="mt-2.5">
-                {remainingStock > 0 ? (
+                {product.stock > 0 ? (
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400">
                     <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                    {lang === 'en' ? `In Stock: ${remainingStock} units available` : `স্টকে আছে: ${remainingStock} পিস পাওয়া যাবে`}
+                    {lang === 'en' ? `In Stock: ${product.stock} units available` : `স্টকে আছে: ${product.stock} পিস পাওয়া যাবে`}
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-2.5 py-1 text-xs font-bold text-rose-700 dark:bg-rose-950/30 dark:text-rose-400">
@@ -298,19 +290,14 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
                       </button>
                       <span className="text-sm font-black">{quantityInCart}</span>
                       <button
-                        onClick={() => {
-                          if (quantityInCart < product.stock) {
-                            onAddToCart(product);
-                          }
-                        }}
-                        disabled={quantityInCart >= product.stock}
-                        className="flex h-6 w-6 items-center justify-center rounded-full transition-colors hover:bg-emerald-200/55 dark:hover:bg-emerald-950 disabled:opacity-30 disabled:cursor-not-allowed"
+                        onClick={() => onAddToCart(product)}
+                        className="flex h-6 w-6 items-center justify-center rounded-full transition-colors hover:bg-emerald-200/55 dark:hover:bg-emerald-950"
                         id="modal-cart-increase"
                       >
                         +
                       </button>
                     </div>
-                  ) : remainingStock === 0 ? (
+                  ) : product.stock === 0 ? (
                     <span className="text-xs font-bold text-rose-500">{dict.outOfStock}</span>
                   ) : (
                     <button
