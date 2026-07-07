@@ -366,20 +366,11 @@ export default function App() {
           items.push(docSnap.data() as Product);
         });
 
-        // Automatically restore any missing default products if not present in the database
-        const existingIds = new Set(items.map(item => item.id));
-        const missingProducts = PRODUCTS.filter(prod => !existingIds.has(prod.id));
-        if (missingProducts.length > 0) {
-          console.log(`Auto-seeding ${missingProducts.length} missing default products to Firestore...`);
-          missingProducts.forEach(async (prod) => {
-            try {
-              const docRef = doc(db, 'products', prod.id);
-              await setDoc(docRef, prod);
-            } catch (seedErr) {
-              console.error(`Failed to auto-seed missing product ${prod.id}:`, seedErr);
-            }
-          });
-        }
+        // NOTE: previously this block auto re-seeded any default product (from data.ts)
+        // that was missing from Firestore. That meant deleting a default product was
+        // pointless - the very next snapshot (including on page reload) would detect
+        // it as "missing" and write it straight back, making deletes look like they
+        // silently failed. Removed so that deletes are permanent, as expected.
 
         // Sort newly added first (usually having p_db_ prefix)
         items.sort((a, b) => {
