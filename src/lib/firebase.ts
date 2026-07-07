@@ -1,22 +1,36 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, getDocs, addDoc, doc, setDoc, deleteDoc, query, orderBy, onSnapshot, updateDoc } from 'firebase/firestore';
+import { getFirestore, collection, getDocs, addDoc, doc, setDoc, deleteDoc, query, orderBy, onSnapshot, updateDoc, getDoc } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
-// Support both environment variables (for secure production hosting) and the local config file
-const finalConfig = {
-  apiKey: (import.meta as any).env.VITE_FIREBASE_API_KEY || firebaseConfig.apiKey,
-  authDomain: (import.meta as any).env.VITE_FIREBASE_AUTH_DOMAIN || firebaseConfig.authDomain,
-  projectId: (import.meta as any).env.VITE_FIREBASE_PROJECT_ID || firebaseConfig.projectId,
-  storageBucket: (import.meta as any).env.VITE_FIREBASE_STORAGE_BUCKET || firebaseConfig.storageBucket,
-  messagingSenderId: (import.meta as any).env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseConfig.messagingSenderId,
-  appId: (import.meta as any).env.VITE_FIREBASE_APP_ID || firebaseConfig.appId,
-  firestoreDatabaseId: (import.meta as any).env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || firebaseConfig.firestoreDatabaseId || '(default)'
+// Helper to safely read VITE_ environment variables and ignore empty/falsy strings
+const getEnvValue = (key: string): string | undefined => {
+  const val = (import.meta as any).env?.[key];
+  if (typeof val === 'string' && val.trim() !== '' && val !== 'undefined') {
+    return val;
+  }
+  return undefined;
 };
+
+const finalConfig = {
+  apiKey: getEnvValue('VITE_FIREBASE_API_KEY') || firebaseConfig.apiKey,
+  authDomain: getEnvValue('VITE_FIREBASE_AUTH_DOMAIN') || firebaseConfig.authDomain,
+  projectId: getEnvValue('VITE_FIREBASE_PROJECT_ID') || firebaseConfig.projectId,
+  storageBucket: getEnvValue('VITE_FIREBASE_STORAGE_BUCKET') || firebaseConfig.storageBucket,
+  messagingSenderId: getEnvValue('VITE_FIREBASE_MESSAGING_SENDER_ID') || firebaseConfig.messagingSenderId,
+  appId: getEnvValue('VITE_FIREBASE_APP_ID') || firebaseConfig.appId,
+  firestoreDatabaseId: getEnvValue('VITE_FIREBASE_FIRESTORE_DATABASE_ID') || firebaseConfig.firestoreDatabaseId || ''
+};
+
+// Log Firebase parameters for extreme transparent debugging (excluding credentials)
+console.log('[Firebase Initializer] Project ID:', finalConfig.projectId);
+console.log('[Firebase Initializer] Database ID:', finalConfig.firestoreDatabaseId || '(default)');
 
 // Initialize Firebase
 const app = initializeApp(finalConfig);
 
-// Initialize Firestore
-const db = getFirestore(app, finalConfig.firestoreDatabaseId);
+// Initialize Firestore - Safely use named database only if a valid custom ID is provided and is not (default)
+const db = finalConfig.firestoreDatabaseId && finalConfig.firestoreDatabaseId !== '(default)'
+  ? getFirestore(app, finalConfig.firestoreDatabaseId)
+  : getFirestore(app);
 
-export { db, collection, getDocs, addDoc, doc, setDoc, deleteDoc, query, orderBy, onSnapshot, updateDoc };
+export { db, collection, getDocs, addDoc, doc, setDoc, deleteDoc, query, orderBy, onSnapshot, updateDoc, getDoc };

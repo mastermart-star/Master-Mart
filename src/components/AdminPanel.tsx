@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, LayoutDashboard, ShoppingBag, Layers, Star, 
   TrendingUp, Users, AlertTriangle, Check, Truck, 
@@ -47,10 +47,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'products' | 'settings'>('overview');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [productToDelete, setProductToDelete] = useState<Product | null>(null);
   
   // Product Edit State
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [editPrice, setEditPrice] = useState<number>(0);
+  const [isSavingProduct, setIsSavingProduct] = useState(false);
+  const [saveProductSuccess, setSaveProductSuccess] = useState(false);
 
   // bKash local settings state
   const [appKey, setAppKey] = useState(bkashSettings.appKey || '');
@@ -175,12 +178,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const handlePrintLabel = () => {
     if (!selectedOrder) return;
 
-    // Remove any existing print section
-    const existingSection = document.getElementById('print-section');
-    if (existingSection) {
-      existingSection.remove();
-    }
-
     const courierText = deliverySettings?.activeService === 'none' || !deliverySettings?.activeService
       ? (lang === 'en' ? 'General Courier' : 'সাধারণ কুরিয়ার')
       : deliverySettings?.activeService === 'pathao' 
@@ -191,121 +188,218 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       const itemPrice = item.product.discountPrice || item.product.price;
       const lineTotal = itemPrice * item.quantity;
       return `
-        <tr style="border-bottom: 1px dashed #ccc; color: #000;">
-          <td style="padding: 2px 0; font-size: 10px; text-align: left;">
+        <tr style="border-bottom: 1px dashed #eee; color: #000;">
+          <td style="padding: 1.5px 0; font-size: 7.5px; text-align: left; line-height: 1.15;">
             [ ] ${index + 1}. ${lang === 'en' ? item.product.nameEn : item.product.nameBn}
-            <span style="font-size: 8.5px; color: #555; display: block;">(${itemPrice} TK)</span>
+            <span style="font-size: 6.5px; color: #555; display: inline-block; margin-left: 4px;">(${itemPrice} TK)</span>
           </td>
-          <td style="padding: 2px 0; font-size: 10px; text-align: center;">${item.quantity}</td>
-          <td style="padding: 2px 0; font-size: 10px; text-align: right;">${lineTotal} TK</td>
+          <td style="padding: 1.5px 0; font-size: 7.5px; text-align: center; vertical-align: top;">${item.quantity}</td>
+          <td style="padding: 1.5px 0; font-size: 7.5px; text-align: right; vertical-align: top;">${lineTotal} TK</td>
         </tr>
       `;
     }).join('');
 
     const getSlipHtml = (copyLabelEn: string, copyLabelBn: string) => `
-      <div style="width: 100%; max-width: 500px; margin: 0 auto; border: 2px solid #000; padding: 10px 12px; box-sizing: border-box; background: #fff; page-break-inside: avoid; font-family: 'Courier New', Courier, monospace, 'Inter', sans-serif; color: #000; text-align: left; line-height: 1.25;">
-        <div style="text-align: center; border-bottom: 2px double #000; padding-bottom: 4px; margin-bottom: 6px;">
-          <h1 style="font-size: 16px; font-weight: 900; text-transform: uppercase; margin: 0 0 1px 0; letter-spacing: 0.5px; color: #000; font-family: sans-serif;">${lang === 'en' ? 'Master Mart' : 'মাস্টার মার্ট'}</h1>
-          <div style="font-size: 9px; background: #000; color: #fff; padding: 1.5px 6px; display: inline-block; font-weight: bold; margin-bottom: 3px; text-transform: uppercase;">${lang === 'en' ? 'PACKAGING SLIP & INVOICE' : 'প্যাকিং স্লিপ এবং চালান'}</div>
-          <br>
-          <div style="font-size: 10px; font-weight: bold; text-transform: uppercase; border: 1px solid #000; padding: 1.5px 5px; margin-top: 2px; display: inline-block; background: #eee; color: #000;">${lang === 'en' ? copyLabelEn : copyLabelBn}</div>
-          <div style="font-size: 9px; margin-top: 2.5px; color: #000;">
-            <b>Date:</b> ${selectedOrder.timestamp} | <b>Order ID:</b> ${selectedOrder.id}
+      <div style="width: 100%; max-width: 95mm; margin: 0 auto; border: 1px solid #000; padding: 5px; box-sizing: border-box; background: #fff; page-break-inside: avoid; font-family: 'Courier New', Courier, monospace, 'Inter', sans-serif; color: #000; text-align: left; line-height: 1.15;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #000; padding-bottom: 3px; margin-bottom: 4px;">
+          <div>
+            <h1 style="font-size: 11px; font-weight: 950; text-transform: uppercase; margin: 0; font-family: sans-serif; color: #000;">${lang === 'en' ? 'Master Mart' : 'মাস্টার মার্ট'}</h1>
+            <div style="font-size: 7.5px; color: #000; margin-top: 1px;">
+              <b>Date:</b> ${selectedOrder.timestamp.split(' ')[0]} | <b>ID:</b> ${selectedOrder.id}
+            </div>
+          </div>
+          <div style="text-align: right;">
+            <div style="font-size: 7.5px; background: #000; color: #fff; padding: 1px 3px; font-weight: bold; text-transform: uppercase; border-radius: 1px; display: inline-block; margin-bottom: 2px;">
+              ${lang === 'en' ? 'INVOICE' : 'চালান'}
+            </div>
+            <br/>
+            <div style="font-size: 7.5px; font-weight: bold; text-transform: uppercase; border: 1px solid #000; padding: 1px 3px; display: inline-block; background: #eee; color: #000; border-radius: 1px;">
+              ${lang === 'en' ? copyLabelEn : copyLabelBn}
+            </div>
           </div>
         </div>
 
-        <div style="margin-bottom: 6px; font-size: 10px; line-height: 1.25; color: #000;">
-          <table style="width: 100%; font-size: 9.5px; color: #000; border-collapse: collapse;">
-            <tr>
-              <td style="width: 50%; text-align: left; vertical-align: top;"><b>Courier Partner:</b><br>${courierText}</td>
-              <td style="width: 50%; text-align: right; vertical-align: top;"><b>Payment Method:</b><br>${selectedOrder.paymentMethod === 'bkash' ? 'bKash (Paid)' : 'COD'}</td>
-            </tr>
-          </table>
+        <div style="display: flex; justify-content: space-between; font-size: 7.5px; margin-bottom: 4px; border-bottom: 1px dashed #ccc; padding-bottom: 3px; color: #000;">
+          <div><b>Courier:</b> ${courierText}</div>
+          <div><b>Payment:</b> ${selectedOrder.paymentMethod === 'bkash' ? 'bKash (Paid)' : 'COD'}</div>
         </div>
 
-        <div style="border: 2px solid #000; padding: 6px 8px; margin-bottom: 6px; background: #fdfdfd; color: #000; text-align: left;">
-          <h3 style="font-size: 9.5px; font-weight: bold; border-bottom: 1px solid #000; padding-bottom: 1px; margin-top: 0; margin-bottom: 3px; text-transform: uppercase; color: #000; text-align: left;">${lang === 'en' ? 'RECIPIENT DETAILS' : 'গ্রাহক বিবরণী'}</h3>
-          <div style="font-size: 11px; font-weight: bold; color: #000;">👤 ${selectedOrder.customerName || (lang === 'en' ? 'Guest Customer' : 'অতিথি কাস্টমার')}</div>
-          <div style="font-size: 14px; font-weight: 900; margin: 3px 0; display: block; border: 1px dashed #000; padding: 2px; text-align: center; background: #f0f0f0; color: #000;">📞 ${selectedOrder.customerPhone}</div>
-          <div style="font-size: 10px; margin-top: 3px; word-break: break-word; line-height: 1.25; color: #000; text-align: left;">
+        <div style="border: 1px solid #000; padding: 3px 5px; margin-bottom: 4px; background: #fdfdfd; border-radius: 1px; font-size: 7.5px; color: #000;">
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed #eee; padding-bottom: 1.5px; margin-bottom: 2.5px;">
+            <span>👤 <b>${selectedOrder.customerName || (lang === 'en' ? 'Guest' : 'অতিথি')}</b></span>
+            <span style="font-size: 8px; font-weight: bold; background: #f0f0f0; border: 1px dashed #000; padding: 0.5px 3px; border-radius: 1px;">📞 ${selectedOrder.customerPhone}</span>
+          </div>
+          <div style="word-break: break-word; line-height: 1.15;">
             📍 <b>Address:</b> ${selectedOrder.customerAddress}
           </div>
         </div>
 
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 6px; color: #000;">
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 4px; color: #000; font-size: 7.5px;">
           <thead>
-            <tr>
-              <th style="border-bottom: 1.5px solid #000; font-size: 9.5px; font-weight: bold; padding: 3px 0; text-transform: uppercase; text-align: left; color: #000;">Item Description</th>
-              <th style="border-bottom: 1.5px solid #000; font-size: 9.5px; font-weight: bold; padding: 3px 0; text-transform: uppercase; text-align: center; width: 40px; color: #000;">Qty</th>
-              <th style="border-bottom: 1.5px solid #000; font-size: 9.5px; font-weight: bold; padding: 3px 0; text-transform: uppercase; text-align: right; width: 80px; color: #000;">Total</th>
+            <tr style="border-bottom: 1px solid #000; text-transform: uppercase; font-weight: bold;">
+              <th style="text-align: left; padding: 1.5px 0;">Item</th>
+              <th style="text-align: center; width: 25px; padding: 1.5px 0;">Qty</th>
+              <th style="text-align: right; width: 55px; padding: 1.5px 0;">Total</th>
             </tr>
           </thead>
           <tbody>
             ${itemsRows}
-            <tr style="border-top: 1.5px solid #000; font-weight: bold; color: #000;">
-              <td colspan="2" style="padding: 3px 0; font-size: 10px; text-align: right;">Subtotal:</td>
-              <td style="padding: 3px 0; font-size: 10px; text-align: right;">${selectedOrder.subtotal} TK</td>
+            <tr style="border-top: 1px solid #000; font-weight: bold;">
+              <td colspan="2" style="text-align: right; padding: 1.5px 0;">Subtotal:</td>
+              <td style="text-align: right; padding: 1.5px 0;">${selectedOrder.subtotal} TK</td>
             </tr>
-            <tr style="font-weight: bold; color: #000;">
-              <td colspan="2" style="padding: 3px 0; font-size: 10px; text-align: right;">Delivery Fee:</td>
-              <td style="padding: 3px 0; font-size: 10px; text-align: right;">+${selectedOrder.deliveryFee} TK</td>
+            <tr style="font-weight: bold;">
+              <td colspan="2" style="text-align: right; padding: 1.5px 0;">Delivery:</td>
+              <td style="text-align: right; padding: 1.5px 0;">+${selectedOrder.deliveryFee} TK</td>
             </tr>
-            <tr style="border-top: 1px solid #000; font-weight: 900; font-size: 11px; color: #000;">
-              <td colspan="2" style="padding: 3px 0; text-align: right;">Grand Total:</td>
-              <td style="padding: 3px 0; text-align: right;">${selectedOrder.total} TK</td>
+            <tr style="border-top: 1px dashed #000; font-weight: 900; font-size: 8px;">
+              <td colspan="2" style="text-align: right; padding: 1.5px 0;">Grand Total:</td>
+              <td style="text-align: right; padding: 1.5px 0;">${selectedOrder.total} TK</td>
             </tr>
           </tbody>
         </table>
 
-        <div style="border: 2px solid #000; background: #000; color: #fff; padding: 6px; text-align: center; font-weight: bold; margin-bottom: 6px;">
-          <p style="font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; margin: 0; color: #fff;">${lang === 'en' ? 'CASH TO COLLECT (COD)' : 'কালেক্টেড ক্যাশ (COD)'}</p>
-          <div style="font-size: 18px; margin: 1px 0 0 0; font-weight: 900; color: #fff;">${selectedOrder.total} TK</div>
-          <span style="font-size: 8px; text-transform: uppercase; font-weight: 900; color: #fff;">
-            ${selectedOrder.paymentMethod === 'bkash' ? (lang === 'en' ? 'PAID ONLINE (bKash)' : 'বিকাশে পরিশোধিত') : (lang === 'en' ? 'COLLECT CASH ON DELIVERY' : 'ডেলিভারিতে ক্যাশ সংগ্রহ করুন')}
+        <div style="background: #000; color: #fff; padding: 3px; text-align: center; font-weight: bold; margin-bottom: 4px; border-radius: 1px;">
+          <span style="font-size: 7.5px; text-transform: uppercase; letter-spacing: 0.3px; color: #fff;">
+            ${lang === 'en' ? 'CASH TO COLLECT (COD):' : 'কালেক্টেড ক্যাশ (COD):'}
           </span>
+          <span style="font-size: 11px; font-weight: 900; color: #fff; margin-left: 5px; background: #fff; color: #000; padding: 0.5px 4px; border-radius: 1px; display: inline-block;">
+            ${selectedOrder.total} TK
+          </span>
+          <div style="font-size: 6.5px; text-transform: uppercase; font-weight: bold; color: #fff; margin-top: 1px; opacity: 0.9;">
+            ${selectedOrder.paymentMethod === 'bkash' ? (lang === 'en' ? 'PAID ONLINE (bKash)' : 'বিকাশে পরিশোধিত') : (lang === 'en' ? 'COLLECT CASH ON DELIVERY' : 'ডেলিভারিতে ক্যাশ সংগ্রহ করুন')}
+          </div>
         </div>
 
-        <div style="display: flex; justify-content: center; align-items: center; gap: 1.5px; height: 18px; margin-top: 4px;">
-          <div style="width: 3px; height: 18px; background: #000;"></div>
-          <div style="width: 1px; height: 18px; background: #000;"></div>
-          <div style="width: 4px; height: 18px; background: #000;"></div>
-          <div style="width: 2px; height: 18px; background: #000;"></div>
-          <div style="width: 1px; height: 18px; background: #000;"></div>
-          <div style="width: 3px; height: 18px; background: #000;"></div>
-          <div style="width: 1px; height: 18px; background: #000;"></div>
-          <div style="width: 5px; height: 18px; background: #000;"></div>
-          <div style="width: 2px; height: 18px; background: #000;"></div>
-          <div style="width: 1px; height: 18px; background: #000;"></div>
-          <div style="width: 4px; height: 18px; background: #000;"></div>
-          <div style="width: 3px; height: 18px; background: #000;"></div>
-          <div style="width: 1px; height: 18px; background: #000;"></div>
-        </div>
-        <div style="font-size: 9px; text-align: center; margin-top: 1px; font-weight: bold; color: #000;">*${selectedOrder.id}*</div>
-
-        <div style="font-size: 9px; text-align: center; margin-top: 5px; border-top: 1px dashed #ccc; padding-top: 4px; color: #000;">
-          ${lang === 'en' ? 'Thank you for shopping with Master Mart!' : 'মাস্টার মার্ট এর সাথে কেনাকাটার জন্য ধন্যবাদ!'}
+        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed #ccc; padding-top: 3px; margin-top: 3px; color: #000;">
+          <div style="font-size: 6.5px; color: #000; max-width: 55%; text-align: left; font-weight: bold; line-height: 1.15;">
+            ${lang === 'en' ? 'Thank you for shopping with Master Mart!' : 'মাস্টার মার্ট এর সাথে কেনাকাটার জন্য ধন্যবাদ!'}
+          </div>
+          <div style="text-align: right;">
+            <div style="display: flex; justify-content: flex-end; align-items: center; gap: 1px; height: 10px;">
+              <div style="width: 2px; height: 10px; background: #000;"></div>
+              <div style="width: 1px; height: 10px; background: #000;"></div>
+              <div style="width: 3px; height: 10px; background: #000;"></div>
+              <div style="width: 1.5px; height: 10px; background: #000;"></div>
+              <div style="width: 1px; height: 10px; background: #000;"></div>
+              <div style="width: 2px; height: 10px; background: #000;"></div>
+              <div style="width: 1px; height: 10px; background: #000;"></div>
+              <div style="width: 3px; height: 10px; background: #000;"></div>
+              <div style="width: 1.5px; height: 10px; background: #000;"></div>
+            </div>
+            <div style="font-size: 6.5px; font-weight: bold; color: #000; margin-top: 1px;">*${selectedOrder.id}*</div>
+          </div>
         </div>
       </div>
     `;
 
-    const printSection = document.createElement('div');
-    printSection.id = 'print-section';
-    printSection.innerHTML = `
-      ${getSlipHtml('CUSTOMER / PACKAGE COPY', 'গ্রাহক / প্যাকেজ কপি')}
-      <div style="width: 100%; max-width: 500px; margin: 2px auto; border-top: 1.5px dashed #000; position: relative; text-align: center; page-break-inside: avoid; height: 1px;">
-        <span style="position: absolute; top: -7px; left: 50%; transform: translateX(-50%); background: #fff; padding: 0 10px; font-size: 8px; font-weight: bold; color: #000;">✂️ ${lang === 'en' ? 'TEAR ALONG LINE' : 'এখান থেকে কাটুন'} ✂️</span>
+    const slip1 = getSlipHtml('CUSTOMER / PACKAGE COPY', 'গ্রাহক / প্যাকেজ কপি');
+    const slip2 = getSlipHtml('OFFICE / MERCHANT COPY', 'অফিস / মার্চেন্ট কপি');
+    const divider = `
+      <div style="width: 100%; max-width: 95mm; margin: 4px auto; border-top: 1px dashed #000; position: relative; text-align: center; height: 1px; page-break-inside: avoid;">
+        <span style="position: absolute; top: -7px; left: 50%; transform: translateX(-50%); background: #fff; padding: 0 6px; font-size: 8px; font-weight: bold; color: #000; font-family: sans-serif;">✂️ ${lang === 'en' ? 'TEAR ALONG LINE' : 'এখান থেকে কাটুন'} ✂️</span>
       </div>
-      ${getSlipHtml('OFFICE / MERCHANT COPY', 'অফিস / মার্চেন্ট কপি')}
     `;
-    document.body.appendChild(printSection);
 
-    // Call standard window.print() directly on the primary window context
-    window.print();
+    const fullHtml = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>${lang === 'en' ? 'Print Slip' : 'প্রিন্ট স্লিপ'} - ${selectedOrder.id}</title>
+          <style>
+            @media print {
+              body {
+                margin: 0;
+                padding: 0;
+                background: #fff !important;
+                color: #000 !important;
+              }
+              @page {
+                size: A6 portrait;
+                margin: 2mm 3mm;
+              }
+              .slip-container {
+                page-break-inside: avoid;
+                width: 100%;
+                display: flex;
+                justify-content: center;
+              }
+            }
+            body {
+              background: #fff;
+              padding: 5px;
+              margin: 0;
+              color: #000;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            .slip-container {
+              width: 100%;
+              display: flex;
+              justify-content: center;
+              margin-bottom: 2px;
+            }
+          </style>
+        </head>
+        <body>
+          <div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 0;">
+            <div class="slip-container">
+              ${slip1}
+            </div>
+            ${divider}
+            <div class="slip-container">
+              ${slip2}
+            </div>
+          </div>
+          <script>
+            window.onload = function() {
+              window.focus();
+              setTimeout(function() {
+                window.print();
+              }, 500);
+            };
+          </script>
+        </body>
+      </html>
+    `;
 
-    // Clean up after 1.5 seconds so that the UI is restored properly in the background
-    setTimeout(() => {
-      printSection.remove();
-    }, 1500);
+    // Try to open a new tab/window for printing to bypass the iframe sandbox limitations
+    let printWindow: Window | null = null;
+    try {
+      printWindow = window.open('', '_blank');
+    } catch (e) {
+      console.warn('Blocked opening print window directly. Falling back to same-page printing.', e);
+    }
+
+    if (printWindow) {
+      printWindow.document.write(fullHtml);
+      printWindow.document.close();
+    } else {
+      // Fallback same-page printing
+      const existingSection = document.getElementById('print-section');
+      if (existingSection) {
+        existingSection.remove();
+      }
+
+      const printSection = document.createElement('div');
+      printSection.id = 'print-section';
+      printSection.innerHTML = `
+        <div style="width: 100%; display: flex; justify-content: center; margin-bottom: 5px; page-break-inside: avoid;">
+          ${slip1}
+        </div>
+        ${divider}
+        <div style="width: 100%; display: flex; justify-content: center; page-break-inside: avoid;">
+          ${slip2}
+        </div>
+      `;
+      document.body.appendChild(printSection);
+      
+      window.print();
+
+      setTimeout(() => {
+        printSection.remove();
+      }, 1500);
+    }
   };
 
   const [editDiscountPrice, setEditDiscountPrice] = useState<string>('');
@@ -358,19 +452,33 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const handleQuickUpdateProduct = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingProduct) return;
-    const updated: Product = {
-      ...editingProduct,
-      price: Number(editPrice),
-      stock: Number(editStock)
-    };
-    if (editDiscountPrice && Number(editDiscountPrice) > 0) {
-      updated.discountPrice = Number(editDiscountPrice);
-    } else {
-      delete updated.discountPrice;
+    if (!editingProduct || isSavingProduct) return;
+
+    setIsSavingProduct(true);
+    setSaveProductSuccess(false);
+
+    try {
+      const updated: Product = {
+        ...editingProduct,
+        price: Number(editPrice),
+        stock: Number(editStock)
+      };
+      if (editDiscountPrice && Number(editDiscountPrice) > 0) {
+        updated.discountPrice = Number(editDiscountPrice);
+      } else {
+        delete updated.discountPrice;
+      }
+      await onUpdateProduct(updated);
+      setSaveProductSuccess(true);
+      // Wait for 1 second to let the user see the success checkmark
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      setEditingProduct(null);
+    } catch (err) {
+      console.error("Failed to quick update product:", err);
+    } finally {
+      setIsSavingProduct(false);
+      setSaveProductSuccess(false);
     }
-    await onUpdateProduct(updated);
-    setEditingProduct(null);
   };
 
   return (
@@ -913,30 +1021,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                {onRestoreDefaultProducts && (
-                  <button
-                    onClick={async () => {
-                      if (confirm(lang === 'en' ? 'Are you sure you want to restore all original default products to the database?' : 'আপনি কি নিশ্চিত যে ডাটাবেসে সকল অরিজিনাল ডিফল্ট পণ্য পুনরুদ্ধার করতে চান?')) {
-                        setIsRestoring(true);
-                        try {
-                          await onRestoreDefaultProducts();
-                          alert(lang === 'en' ? 'Default products restored successfully!' : 'ডিফল্ট পণ্য সফলভাবে পুনরুদ্ধার করা হয়েছে!');
-                        } catch (err: any) {
-                          alert((lang === 'en' ? 'Failed to restore default products: ' : 'ডিফল্ট পণ্য পুনরুদ্ধার করতে ব্যর্থ হয়েছে: ') + (err.message || err));
-                        } finally {
-                          setIsRestoring(false);
-                        }
-                      }
-                    }}
-                    disabled={isRestoring}
-                    className="flex items-center justify-center gap-1.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 font-extrabold text-xs px-4 py-2.5 transition-all shadow-sm active:scale-95 cursor-pointer disabled:opacity-50"
-                    id="admin-restore-defaults-btn"
-                  >
-                    <RefreshCw className={`h-3.5 w-3.5 ${isRestoring ? 'animate-spin' : ''}`} />
-                    <span>{isRestoring ? (lang === 'en' ? 'Restoring...' : 'পুনরুদ্ধার হচ্ছে...') : (lang === 'en' ? 'Restore Default Products' : 'ডিফল্ট পণ্য রিসেট করুন')}</span>
-                  </button>
-                )}
-
                 <button
                   onClick={onAddProductClick}
                   className="flex items-center justify-center gap-1.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs px-4 py-2.5 transition-all shadow-md active:scale-95 cursor-pointer self-start sm:self-auto"
@@ -1030,9 +1114,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           
                           <button
                             onClick={() => {
-                              if (confirm(lang === 'en' ? `Delete ${prod.nameEn} permanently from live Firestore database?` : `${prod.nameBn} কি সত্যিই ফায়ারস্টোর ডাটাবেস থেকে মুছে ফেলতে চান?`)) {
-                                onDeleteProduct(prod);
-                              }
+                              setProductToDelete(prod);
                             }}
                             className="p-1.5 rounded-lg border border-rose-100 hover:bg-rose-500 hover:text-white text-rose-500 transition-all cursor-pointer dark:border-rose-950/40"
                             title={lang === 'en' ? 'Delete Permanently' : 'মুছে ফেলুন'}
@@ -1733,16 +1815,39 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button
                   type="button"
+                  disabled={isSavingProduct}
                   onClick={() => setEditingProduct(null)}
-                  className="rounded-xl px-4 py-2.5 text-xs font-bold text-slate-500 hover:bg-slate-150 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 transition-all cursor-pointer"
+                  className="rounded-xl px-4 py-2.5 text-xs font-bold text-slate-500 hover:bg-slate-150 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 transition-all cursor-pointer disabled:opacity-50"
                 >
                   {lang === 'en' ? 'Cancel' : 'বাতিল'}
                 </button>
                 <button
                   type="submit"
-                  className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black px-5 py-2.5 transition-all shadow-md active:scale-98 cursor-pointer"
+                  disabled={isSavingProduct}
+                  className={`rounded-xl text-white text-xs font-black px-5 py-2.5 transition-all shadow-md active:scale-98 cursor-pointer flex items-center justify-center gap-1.5 min-w-[125px] ${
+                    saveProductSuccess
+                      ? 'bg-emerald-500'
+                      : isSavingProduct
+                      ? 'bg-slate-400 dark:bg-slate-700 cursor-wait'
+                      : 'bg-emerald-600 hover:bg-emerald-700'
+                  }`}
                 >
-                  {lang === 'en' ? 'Save Changes' : 'পরিবর্তন সেভ করুন'}
+                  {saveProductSuccess ? (
+                    <>
+                      <Check className="h-3.5 w-3.5 shrink-0" />
+                      <span>{lang === 'en' ? 'Saved!' : 'সংরক্ষিত!'}</span>
+                    </>
+                  ) : isSavingProduct ? (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                      <span>{lang === 'en' ? 'Saving...' : 'সেভ হচ্ছে...'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="h-3.5 w-3.5 shrink-0" />
+                      <span>{lang === 'en' ? 'Save Changes' : 'পরিবর্তন সেভ করুন'}</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>
@@ -1842,7 +1947,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               {/* Preview Container Label */}
               <div className="space-y-2">
                 <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                  {lang === 'en' ? 'Print Label Preview (Fits A4/Dual Slips)' : 'প্রিন্ট লেবেল প্রিভিউ (A4/ডুয়াল স্লিপ)'}
+                  {lang === 'en' ? 'Print Label Preview (Fits A6/Dual Slips)' : 'প্রিন্ট লেবেল প্রিভিউ (A6/ডুয়াল স্লিপ)'}
                 </p>
 
                 {/* Styled Print Preview Box */}
@@ -1852,34 +1957,37 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   {['CUSTOMER / PACKAGE COPY', 'OFFICE / MERCHANT COPY'].map((copyLabel, slipIdx) => (
                     <React.Fragment key={slipIdx}>
                       {slipIdx > 0 && (
-                        <div className="w-full border-t-2 border-dashed border-slate-400 my-4 relative text-center pt-2">
-                          <span className="absolute -top-3.5 left-1/2 transform -translate-x-1/2 bg-slate-50 dark:bg-slate-950 px-3 text-[10px] font-bold text-slate-500">
+                        <div className="w-full border-t border-dashed border-slate-400 my-2 relative text-center pt-1.5">
+                          <span className="absolute -top-2.5 left-1/2 transform -translate-x-1/2 bg-slate-50 dark:bg-slate-950 px-2 text-[8px] font-bold text-slate-500">
                             ✂️ {lang === 'en' ? 'TEAR ALONG LINE' : 'এখান থেকে কাটুন'} ✂️
                           </span>
                         </div>
                       )}
 
-                      <div className="w-full max-w-[340px] bg-white text-slate-950 p-4 border border-slate-400 rounded-sm font-mono shadow-xs space-y-4">
+                      <div className="w-full max-w-[340px] bg-white text-slate-950 p-2.5 border border-slate-950 rounded-xs font-mono shadow-xs text-left" style={{ lineHeight: 1.15 }}>
                         {/* Inner Header */}
-                        <div className="text-center border-b-2 border-double border-slate-950 pb-2">
-                          <h4 className="text-sm font-black tracking-tight uppercase text-slate-950">
-                            {lang === 'en' ? 'Master Mart' : 'মাস্টার মার্ট'}
-                          </h4>
-                          <span className="inline-block bg-slate-950 text-white text-[9px] font-black px-2 py-0.5 mt-1 tracking-wider uppercase rounded-xs">
-                            {lang === 'en' ? 'PACKAGING SLIP & INVOICE' : 'প্যাকিং স্লিপ এবং চালান'}
-                          </span>
-                          <div className="text-[10px] font-bold border border-slate-950 px-2 py-0.5 mt-2 inline-block bg-slate-100">
-                            {lang === 'en' ? copyLabel : (copyLabel.includes('CUSTOMER') ? 'গ্রাহক / প্যাকেজ কপি' : 'অফিস / মার্চেন্ট কপি')}
+                        <div className="flex justify-between items-center border-b border-slate-950 pb-1 mb-1.5">
+                          <div>
+                            <h4 className="text-xs font-black uppercase text-slate-950 tracking-tight leading-none">
+                              {lang === 'en' ? 'Master Mart' : 'মাস্টার মার্ট'}
+                            </h4>
+                            <div className="text-[7.5px] text-slate-500 mt-0.5 font-bold leading-none">
+                              <b>Date:</b> {selectedOrder.timestamp.split(' ')[0]} | <b>ID:</b> {selectedOrder.id}
+                            </div>
                           </div>
-                          <div className="text-[9px] mt-1.5 font-bold text-slate-850">
-                            <span>Order ID: #{selectedOrder.id}</span>
-                            <span className="mx-2">|</span>
-                            <span>{selectedOrder.timestamp}</span>
+                          <div className="text-right">
+                            <span className="inline-block bg-slate-950 text-white text-[7.5px] font-black px-1.5 py-0.5 tracking-wider uppercase rounded-xs leading-none mb-0.5">
+                              {lang === 'en' ? 'INVOICE' : 'চালান'}
+                            </span>
+                            <br />
+                            <div className="text-[7px] font-bold border border-slate-950 px-1 py-0.5 inline-block bg-slate-100 rounded-xs leading-none">
+                              {lang === 'en' ? copyLabel : (copyLabel.includes('CUSTOMER') ? 'গ্রাহক কপি' : 'মার্চেন্ট কপি')}
+                            </div>
                           </div>
                         </div>
 
-                        {/* Delivery Method */}
-                        <div className="text-[10px] flex justify-between font-bold border-b border-slate-200 pb-2 text-slate-850">
+                        {/* Courier Partner & Payment Method */}
+                        <div className="text-[7.5px] flex justify-between font-bold border-b border-dashed border-slate-200 pb-1 mb-1.5 text-slate-850">
                           <div>
                             <span>Courier: </span>
                             <span className="font-black text-indigo-700">
@@ -1899,27 +2007,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         </div>
 
                         {/* Recipient Details Block */}
-                        <div className="border border-slate-950 p-2.5 bg-slate-50 space-y-1 rounded-xs text-slate-950">
-                          <p className="text-[9px] uppercase font-black text-slate-500 tracking-wider">
-                            {lang === 'en' ? 'Shipping Details' : 'গ্রাহক বিবরণী'}
-                          </p>
-                          <p className="text-xs font-black">👤 {selectedOrder.customerName || (lang === 'en' ? 'Guest Customer' : 'অতিথি')}</p>
-                          <p className="text-sm font-black border border-dashed border-slate-900 bg-slate-100 p-1 rounded-xs text-center">
-                            📞 {selectedOrder.customerPhone}
-                          </p>
-                          <p className="text-[10px] leading-tight font-bold pt-1">
-                            📍 {selectedOrder.customerAddress}
+                        <div className="border border-slate-950 p-1.5 bg-slate-50 rounded-xs text-slate-950 mb-1.5 text-[7.5px]">
+                          <div className="flex justify-between items-center border-b border-dashed border-slate-200 pb-1 mb-1">
+                            <span className="font-black">👤 {selectedOrder.customerName || (lang === 'en' ? 'Guest' : 'অতিথি')}</span>
+                            <span className="font-black border border-dashed border-slate-900 bg-slate-100 px-1.5 py-0.5 rounded-xs">
+                              📞 {selectedOrder.customerPhone}
+                            </span>
+                          </div>
+                          <p className="leading-tight font-bold">
+                            📍 <b>Address:</b> {selectedOrder.customerAddress}
                           </p>
                         </div>
 
-                        {/* Order Checklist */}
-                        <div className="space-y-1 text-slate-950">
-                          <table className="w-full text-[9px] border-collapse font-bold">
+                        {/* Order Checklist / Items table */}
+                        <div className="mb-1.5">
+                          <table className="w-full text-[7.5px] border-collapse font-bold text-slate-950">
                             <thead>
                               <tr className="border-b border-slate-950 text-left uppercase">
-                                <th className="pb-1">Item Description</th>
-                                <th className="pb-1 text-center w-8">Qty</th>
-                                <th className="pb-1 text-right w-16">Total</th>
+                                <th className="pb-0.5">Item</th>
+                                <th className="pb-0.5 text-center w-6">Qty</th>
+                                <th className="pb-0.5 text-right w-12">Total</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -1928,63 +2035,67 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 const lineTotal = itemPrice * item.quantity;
                                 return (
                                   <tr key={index} className="border-b border-dashed border-slate-200">
-                                    <td className="py-1">
+                                    <td className="py-0.5">
                                       [ ] {lang === 'en' ? item.product.nameEn : item.product.nameBn}
-                                      <span className="text-[8px] text-slate-500 font-bold block">({itemPrice} TK)</span>
+                                      <span className="text-[6.5px] text-slate-500 font-bold ml-1 inline-block">({itemPrice} TK)</span>
                                     </td>
-                                    <td className="py-1 text-center">{item.quantity}</td>
-                                    <td className="py-1 text-right">{lineTotal} TK</td>
+                                    <td className="py-0.5 text-center">{item.quantity}</td>
+                                    <td className="py-0.5 text-right">{lineTotal} TK</td>
                                   </tr>
                                 );
                               })}
-                              {/* Summary calculations to show matching bills */}
                               <tr className="border-t border-slate-950 font-bold">
-                                <td className="py-1 text-right" colSpan={2}>{lang === 'en' ? 'Subtotal:' : 'উপমোট:'}</td>
-                                <td className="py-1 text-right">{selectedOrder.subtotal} TK</td>
+                                <td className="py-0.5 text-right" colSpan={2}>{lang === 'en' ? 'Subtotal:' : 'উপমোট:'}</td>
+                                <td className="py-0.5 text-right">{selectedOrder.subtotal} TK</td>
                               </tr>
                               <tr className="font-bold">
-                                <td className="py-1 text-right" colSpan={2}>{lang === 'en' ? 'Delivery Charge:' : 'ডেলিভারি চার্জ:'}</td>
-                                <td className="py-1 text-right">+{selectedOrder.deliveryFee} TK</td>
+                                <td className="py-0.5 text-right" colSpan={2}>{lang === 'en' ? 'Delivery:' : 'ডেলিভারি:'}</td>
+                                <td className="py-0.5 text-right">+{selectedOrder.deliveryFee} TK</td>
                               </tr>
-                              <tr className="border-t-2 border-double border-slate-950 font-black text-xs">
-                                <td className="py-1 text-right" colSpan={2}>{lang === 'en' ? 'Grand Total:' : 'সর্বমোট:'}</td>
-                                <td className="py-1 text-right text-indigo-700">{selectedOrder.total} TK</td>
+                              <tr className="border-t border-dashed border-slate-950 font-black text-[8px]">
+                                <td className="py-0.5 text-right" colSpan={2}>{lang === 'en' ? 'Grand Total:' : 'সর্বমোট:'}</td>
+                                <td className="py-0.5 text-right text-indigo-700">{selectedOrder.total} TK</td>
                               </tr>
                             </tbody>
                           </table>
                         </div>
 
                         {/* Cash to Collect Block */}
-                        <div className="border-2 border-slate-950 bg-slate-950 text-white p-2.5 text-center rounded-xs space-y-1">
-                          <p className="text-[9px] font-bold uppercase tracking-wider">
-                            {lang === 'en' ? 'CASH TO COLLECT (COD)' : 'কুরিয়ার কালেক্টেড ক্যাশ (COD)'}
-                          </p>
-                          <p className="text-lg font-black">{selectedOrder.total} TK</p>
-                          <p className="text-[8px] tracking-wide uppercase font-black opacity-90">
+                        <div className="bg-slate-950 text-white p-1.5 text-center rounded-xs mb-1.5">
+                          <div className="flex justify-center items-center gap-1.5">
+                            <span className="text-[7.5px] font-bold uppercase tracking-wider">
+                              {lang === 'en' ? 'CASH TO COLLECT (COD):' : 'কালেক্টেড ক্যাশ (COD):'}
+                            </span>
+                            <span className="text-xs font-black bg-white text-slate-950 px-1.5 py-0.5 rounded-xs leading-none">
+                              {selectedOrder.total} TK
+                            </span>
+                          </div>
+                          <p className="text-[6.5px] tracking-wide uppercase font-black opacity-90 mt-0.5">
                             {selectedOrder.paymentMethod === 'bkash' 
                               ? (lang === 'en' ? 'Paid via bKash Online' : 'বিকাশের মাধ্যমে পরিশোধিত') 
                               : (lang === 'en' ? 'Collect full amount' : 'সম্পূর্ণ টাকা কুরিয়ার কালেকশন করবে')}
                           </p>
                         </div>
 
-                        {/* Barcode representation */}
-                        <div className="space-y-1 pt-1">
-                          <div className="flex justify-center items-center gap-[1px] h-8 opacity-80">
-                            <div className="w-[3px] h-8 bg-slate-950"></div>
-                            <div className="w-[1px] h-8 bg-slate-950"></div>
-                            <div className="w-[4px] h-8 bg-slate-950"></div>
-                            <div className="w-[2px] h-8 bg-slate-950"></div>
-                            <div className="w-[1px] h-8 bg-slate-950"></div>
-                            <div className="w-[3px] h-8 bg-slate-950"></div>
-                            <div className="w-[1px] h-8 bg-slate-950"></div>
-                            <div className="w-[5px] h-8 bg-slate-950"></div>
-                            <div className="w-[2px] h-8 bg-slate-950"></div>
-                            <div className="w-[1px] h-8 bg-slate-950"></div>
-                            <div className="w-[4px] h-8 bg-slate-950"></div>
-                            <div className="w-[3px] h-8 bg-slate-950"></div>
-                            <div className="w-[1px] h-8 bg-slate-950"></div>
+                        {/* Barcode and thank you note */}
+                        <div className="flex justify-between items-center border-t border-dashed border-slate-300 pt-1 mt-1">
+                          <p className="text-[6.5px] font-bold text-slate-700 max-w-[55%] leading-tight text-left">
+                            {lang === 'en' ? 'Thank you for shopping with Master Mart!' : 'মাস্টার মার্ট এর সাথে কেনাকাটার জন্য ধন্যবাদ!'}
+                          </p>
+                          <div className="text-right">
+                            <div className="flex justify-end items-center gap-[0.5px] h-3 opacity-80">
+                              <div className="w-[1.5px] h-3 bg-slate-950"></div>
+                              <div className="w-[0.5px] h-3 bg-slate-950"></div>
+                              <div className="w-[2px] h-3 bg-slate-950"></div>
+                              <div className="w-[1px] h-3 bg-slate-950"></div>
+                              <div className="w-[0.5px] h-3 bg-slate-950"></div>
+                              <div className="w-[1.5px] h-3 bg-slate-950"></div>
+                              <div className="w-[0.5px] h-3 bg-slate-950"></div>
+                              <div className="w-[2px] h-3 bg-slate-950"></div>
+                              <div className="w-[1px] h-3 bg-slate-950"></div>
+                            </div>
+                            <p className="text-[7px] font-bold tracking-wider text-slate-800 mt-0.5">*{selectedOrder.id}*</p>
                           </div>
-                          <p className="text-[9px] text-center font-bold tracking-widest text-slate-800">*{selectedOrder.id}*</p>
                         </div>
                       </div>
                     </React.Fragment>
@@ -2017,6 +2128,72 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           </motion.div>
         </div>
       )}
+
+      {/* CUSTOM PRODUCTS DELETE CONFIRMATION MODAL */}
+      <AnimatePresence>
+        {productToDelete && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[28px] p-6 shadow-2xl max-w-sm w-full space-y-4"
+            >
+              <div className="flex items-center gap-3 text-rose-500">
+                <div className="h-10 w-10 rounded-full bg-rose-500/10 flex items-center justify-center shrink-0">
+                  <Trash2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm text-slate-900 dark:text-white uppercase tracking-tight">
+                    {lang === 'en' ? 'Delete Product?' : 'পণ্যটি মুছে ফেলবেন?'}
+                  </h3>
+                  <p className="text-[10px] text-slate-400 font-bold">
+                    {lang === 'en' ? 'This action is permanent and cannot be undone.' : 'এই কাজটি স্থায়ী এবং পুনরুদ্ধার করা সম্ভব নয়।'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-3 bg-slate-50 dark:bg-slate-950/60 rounded-2xl flex items-center gap-3 border border-slate-100 dark:border-slate-850">
+                <img
+                  src={productToDelete.image}
+                  alt={productToDelete.nameEn}
+                  className="h-10 w-10 rounded-lg object-cover bg-slate-50 border border-slate-100 dark:border-slate-800"
+                  referrerPolicy="no-referrer"
+                />
+                <div className="truncate flex-1">
+                  <span className="font-extrabold text-xs text-slate-950 dark:text-white block truncate leading-tight">
+                    {lang === 'en' ? productToDelete.nameEn : productToDelete.nameBn}
+                  </span>
+                  <span className="text-[9px] text-slate-400 block font-semibold mt-0.5">
+                    ID: {productToDelete.id} | TK {productToDelete.discountPrice || productToDelete.price}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setProductToDelete(null)}
+                  className="flex-1 py-2.5 rounded-xl border border-slate-150 hover:bg-slate-50 text-slate-600 font-bold text-xs dark:border-slate-800 dark:hover:bg-slate-950 dark:text-zinc-300 cursor-pointer text-center"
+                >
+                  {lang === 'en' ? 'Cancel' : 'বাতিল'}
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const prod = productToDelete;
+                    setProductToDelete(null);
+                    await onDeleteProduct(prod);
+                  }}
+                  className="flex-1 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-black text-xs cursor-pointer text-center shadow-md active:scale-95 transition-all"
+                >
+                  {lang === 'en' ? 'Delete' : 'মুছে ফেলুন'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
     </div>
   );

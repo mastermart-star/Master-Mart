@@ -52,7 +52,7 @@ import { DeliveryTracking } from './components/DeliveryTracking';
 import { AddProductModal } from './components/AddProductModal';
 import { AdminPanel } from './components/AdminPanel';
 import { AdminLoginModal } from './components/AdminLoginModal';
-import { db, collection, getDocs, doc, setDoc, deleteDoc, onSnapshot, updateDoc } from './lib/firebase';
+import { db, collection, getDocs, doc, setDoc, deleteDoc, onSnapshot, updateDoc, getDoc } from './lib/firebase';
 
 enum OperationType {
   CREATE = 'create',
@@ -119,15 +119,45 @@ const renderCatIcon = (iconName: string, className: string) => {
   }
 };
 
+// Robust safe wrapper around cookies to guarantee persistence inside iframe sandboxes where localStorage gets blocked or wiped.
+const safeCookies = {
+  getItem(key: string): string | null {
+    try {
+      if (typeof document !== 'undefined') {
+        const match = document.cookie.match(new RegExp('(^| )' + key + '=([^;]*)'));
+        if (match) return decodeURIComponent(match[2]);
+      }
+    } catch (e) {
+      console.warn(`Cookie access blocked/failed for key "${key}":`, e);
+    }
+    return null;
+  },
+  setItem(key: string, value: string): void {
+    try {
+      if (typeof document !== 'undefined') {
+        const date = new Date();
+        date.setTime(date.getTime() + (30 * 24 * 60 * 60 * 1000)); // 30 days durability
+        document.cookie = `${key}=${encodeURIComponent(value)}; expires=${date.toUTCString()}; path=/; SameSite=Lax`;
+      }
+    } catch (e) {
+      console.warn(`Cookie writing blocked/failed for key "${key}":`, e);
+    }
+  }
+};
+
 // Robust safe wrapper around localStorage to prevent SecurityError exceptions in sandboxed or cross-origin iframe environments.
+const inMemoryStore: Record<string, string> = {};
 const safeLocalStorage = {
   getItem(key: string): string | null {
     try {
-      return localStorage.getItem(key);
+      const val = localStorage.getItem(key);
+      if (val !== null) return val;
     } catch (e) {
       console.warn(`localStorage.getItem blocked/failed for key "${key}":`, e);
-      return null;
     }
+    const cookieVal = safeCookies.getItem(key);
+    if (cookieVal !== null) return cookieVal;
+    return inMemoryStore[key] || null;
   },
   setItem(key: string, value: string): void {
     try {
@@ -135,8 +165,31 @@ const safeLocalStorage = {
     } catch (e) {
       console.warn(`localStorage.setItem blocked/failed for key "${key}":`, e);
     }
+    safeCookies.setItem(key, value);
+    inMemoryStore[key] = value;
   }
 };
+
+function cleanUndefined<T>(obj: T): T {
+  if (obj === undefined) {
+    return null as any;
+  }
+  if (obj === null || typeof obj !== 'object') {
+    return obj;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(item => cleanUndefined(item)) as any;
+  }
+  const clean = { ...obj } as any;
+  Object.keys(clean).forEach(key => {
+    if (clean[key] === undefined) {
+      delete clean[key];
+    } else {
+      clean[key] = cleanUndefined(clean[key]);
+    }
+  });
+  return clean;
+}
 
 export default function App() {
   // Lang preference
@@ -347,63 +400,90 @@ export default function App() {
 
   // Real-time stream products from Firestore
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'products'), (snapshot) => {
-      if (snapshot.empty) {
-        // Seed default products to Firestore if empty
-        console.log('Seeding initial products to Firestore...');
-        PRODUCTS.forEach(async (prod) => {
-          try {
-            const docRef = doc(db, 'products', prod.id);
-            await setDoc(docRef, prod);
-          } catch (seedErr) {
-            console.error(`Failed to seed default product ${prod.id}:`, seedErr);
-          }
-        });
-        setProductsList(PRODUCTS);
-      } else {
-        const items: Product[] = [];
-        snapshot.forEach((docSnap) => {
-          items.push(docSnap.data() as Product);
-        });
+    let active = true;
+    let unsubProducts: (() => void) | null = null;
 
-        // Automatically restore any missing default products if not present in the database
-        const existingIds = new Set(items.map(item => item.id));
-        const missingProducts = PRODUCTS.filter(prod => !existingIds.has(prod.id));
-        if (missingProducts.length > 0) {
-          console.log(`Auto-seeding ${missingProducts.length} missing default products to Firestore...`);
-          missingProducts.forEach(async (prod) => {
-            try {
-              const docRef = doc(db, 'products', prod.id);
-              await setDoc(docRef, prod);
-            } catch (seedErr) {
-              console.error(`Failed to auto-seed missing product ${prod.id}:`, seedErr);
-            }
-          });
-        }
-
-        // Sort newly added first (usually having p_db_ prefix)
-        items.sort((a, b) => {
-          const isA_Db = a.id.startsWith('p_db_');
-          const isB_Db = b.id.startsWith('p_db_');
-          if (isA_Db && !isB_Db) return -1;
-          if (!isA_Db && isB_Db) return 1;
-          return b.id.localeCompare(a.id);
-        });
-        setProductsList(items);
-      }
-      setDbLoading(false);
-    }, (err) => {
-      console.error('Failed to stream products:', err);
-      setProductsList(PRODUCTS);
-      setDbLoading(false);
+    const setupStream = async () => {
+      let isSeededInDb = false;
       try {
-        handleFirestoreError(err, OperationType.LIST, 'products');
-      } catch (e) {
-        // Log custom error structure
+        const sysSnap = await getDoc(doc(db, 'settings', 'system'));
+        if (sysSnap.exists() && sysSnap.data()?.isSeeded) {
+          isSeededInDb = true;
+        }
+      } catch (err) {
+        console.warn('Failed to fetch system seeding status:', err);
       }
-    });
 
-    return () => unsub();
+      if (!active) return;
+
+      unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
+        if (!active) return;
+
+        if (snapshot.empty) {
+          if (!isSeededInDb) {
+            console.log('Database is empty and not seeded yet. Seeding default products to Firestore...');
+            PRODUCTS.forEach(async (prod) => {
+              try {
+                const docRef = doc(db, 'products', prod.id);
+                await setDoc(docRef, prod);
+              } catch (seedErr) {
+                console.error(`Failed to seed default product ${prod.id}:`, seedErr);
+              }
+            });
+            setDoc(doc(db, 'settings', 'system'), { isSeeded: true })
+              .then(() => { isSeededInDb = true; })
+              .catch(err => console.error('Failed to save system seeding status:', err));
+            setProductsList(PRODUCTS);
+          } else {
+            // The database has been seeded before, but the admin deleted all products, so respect the empty database
+            setProductsList([]);
+          }
+        } else {
+          const items: Product[] = [];
+          snapshot.forEach((docSnap) => {
+            items.push(docSnap.data() as Product);
+          });
+
+          // Sort newly added first (usually having p_db_ prefix)
+          items.sort((a, b) => {
+            const isA_Db = a.id.startsWith('p_db_');
+            const isB_Db = b.id.startsWith('p_db_');
+            if (isA_Db && !isB_Db) return -1;
+            if (!isA_Db && isB_Db) return 1;
+            return b.id.localeCompare(a.id);
+          });
+          setProductsList(items);
+
+          // If there are products in the DB, ensure the isSeeded setting is marked as true
+          if (!isSeededInDb) {
+            setDoc(doc(db, 'settings', 'system'), { isSeeded: true })
+              .then(() => { isSeededInDb = true; })
+              .catch(err => console.error('Failed to update system seeding status:', err));
+          }
+        }
+        setDbLoading(false);
+      }, (err) => {
+        console.error('Failed to stream products:', err);
+        if (active) {
+          setProductsList(PRODUCTS);
+          setDbLoading(false);
+          try {
+            handleFirestoreError(err, OperationType.LIST, 'products');
+          } catch (e) {
+            // Log custom error structure
+          }
+        }
+      });
+    };
+
+    setupStream();
+
+    return () => {
+      active = false;
+      if (unsubProducts) {
+        unsubProducts();
+      }
+    };
   }, []);
 
   // Real-time stream orders from Firestore (for both Admin and Customer tracking)
@@ -443,10 +523,16 @@ export default function App() {
 
   // Save new product to Firestore
   const handleAddProductToDb = async (newProduct: Product) => {
+    // Instantly update local state so the UI is responsive immediately
+    setProductsList((prev) => {
+      if (prev.some(p => p.id === newProduct.id)) return prev;
+      return [newProduct, ...prev];
+    });
+
     try {
       console.log('Attempting to add product to Firestore:', newProduct.id);
       const docRef = doc(db, 'products', newProduct.id);
-      await setDoc(docRef, newProduct);
+      await setDoc(docRef, cleanUndefined(newProduct));
       console.log('Successfully saved product to Firestore!');
       triggerNotification(lang === 'en' ? 'Product successfully saved to Database!' : 'পণ্যটি সফলভাবে ডাটাবেসে যোগ হয়েছে!');
     } catch (err) {
@@ -481,6 +567,9 @@ export default function App() {
 
   // Delete product from Firestore
   const handleDeleteProductFromDb = async (product: Product) => {
+    // Instantly update local state so the UI is responsive immediately
+    setProductsList((prev) => prev.filter(p => p.id !== product.id));
+
     try {
       const docRef = doc(db, 'products', product.id);
       await deleteDoc(docRef);
@@ -519,19 +608,27 @@ export default function App() {
 
   // Update product price or stock in Firestore (Admin tool)
   const handleUpdateProductInDb = async (updatedProduct: Product) => {
-    try {
-      const docRef = doc(db, 'products', updatedProduct.id);
-      await setDoc(docRef, updatedProduct);
-      triggerNotification(lang === 'en' ? 'Product inventory successfully updated!' : 'পণ্য বিবরণী সফলভাবে আপডেট করা হয়েছে!');
-    } catch (err) {
-      console.error('Failed to update product details:', err);
-      triggerNotification(lang === 'en' ? 'Failed to update product.' : 'পণ্য বিবরণী আপডেট করতে ব্যর্থ হয়েছে।');
+    // Instantly update local state so the UI is responsive immediately
+    setProductsList((prev) => 
+      prev.map(p => p.id === updatedProduct.id ? updatedProduct : p)
+    );
+
+    // Run the Firestore write in the background to prevent any UI blocking or hanging in sandboxed iframe previews
+    (async () => {
       try {
-        handleFirestoreError(err, OperationType.UPDATE, `products/${updatedProduct.id}`);
-      } catch (wrappedErr) {
-        // Logged
+        const docRef = doc(db, 'products', updatedProduct.id);
+        await setDoc(docRef, cleanUndefined(updatedProduct));
+        triggerNotification(lang === 'en' ? 'Product inventory successfully updated!' : 'পণ্য বিবরণী সফলভাবে আপডেট করা হয়েছে!');
+      } catch (err) {
+        console.error('Failed to update product details:', err);
+        triggerNotification(lang === 'en' ? 'Failed to update product.' : 'পণ্য বিবরণী আপডেট করতে ব্যর্থ হয়েছে।');
+        try {
+          handleFirestoreError(err, OperationType.UPDATE, `products/${updatedProduct.id}`);
+        } catch (wrappedErr) {
+          // Logged
+        }
       }
-    }
+    })();
   };
 
   // Sync to LocalStorage
@@ -616,6 +713,18 @@ export default function App() {
 
   // Cart operations
   const handleAddToCart = (product: Product) => {
+    const existingCartItem = cart.find((item) => item.product.id === product.id);
+    const quantityInCart = existingCartItem ? existingCartItem.quantity : 0;
+
+    if (quantityInCart >= product.stock) {
+      triggerNotification(
+        lang === 'en'
+          ? `Cannot add more! Only ${product.stock} items in stock.`
+          : `আর যোগ করা সম্ভব নয়! স্টকে মাত্র ${product.stock}টি আছে।`
+      );
+      return;
+    }
+
     setCart((prev) => {
       const existingIndex = prev.findIndex((item) => item.product.id === product.id);
       if (existingIndex >= 0) {
@@ -704,48 +813,76 @@ export default function App() {
       customerEmail: customerDetails?.email
     };
 
+    // 1. Immediately register the order ID locally to avoid filtering out and ensure instant transition
+    const myOrderIdsString = safeLocalStorage.getItem('master_mart_my_order_ids') || '[]';
+    let myOrderIds: string[] = [];
     try {
-      // 1. Save to Firestore orders collection
-      const docRef = doc(db, 'orders', completedOrder.id);
-      await setDoc(docRef, completedOrder);
-
-      // 1.5. Update product stock in Firestore
-      for (const item of completedOrder.items) {
-        try {
-          const productRef = doc(db, 'products', item.product.id);
-          const currentStock = item.product.stock;
-          const newStock = Math.max(0, currentStock - item.quantity);
-          await updateDoc(productRef, {
-            stock: newStock
-          });
-          console.log(`Successfully updated stock for ${item.product.id}: ${currentStock} -> ${newStock}`);
-        } catch (stockErr) {
-          console.error(`Failed to update stock for product ${item.product.id}:`, stockErr);
-        }
-      }
-
-      // 2. Add ID to local storage orders lists
-      const myOrderIdsString = safeLocalStorage.getItem('master_mart_my_order_ids') || '[]';
-      let myOrderIds: string[] = [];
-      try {
-        myOrderIds = JSON.parse(myOrderIdsString);
-      } catch (e) {
-        myOrderIds = [];
-      }
+      myOrderIds = JSON.parse(myOrderIdsString);
+    } catch (e) {
+      myOrderIds = [];
+    }
+    if (!myOrderIds.includes(completedOrder.id)) {
       myOrderIds.push(completedOrder.id);
       safeLocalStorage.setItem('master_mart_my_order_ids', JSON.stringify(myOrderIds));
-
-      setOrders([completedOrder, ...orders]);
-    } catch (err) {
-      console.error('Failed to save order to Firestore:', err);
-      // Fallback
-      setOrders([completedOrder, ...orders]);
     }
 
+    // Update local orders state instantly
+    setOrders((prev) => {
+      if (prev.some(o => o.id === completedOrder.id)) return prev;
+      return [completedOrder, ...prev];
+    });
+
+    // Update local products state instantly so stock changes are immediate
+    setProductsList((prev) =>
+      prev.map((prod) => {
+        const cartItem = completedOrder.items.find((item) => item.product.id === prod.id);
+        if (cartItem) {
+          return {
+            ...prod,
+            stock: Math.max(0, prod.stock - cartItem.quantity)
+          };
+        }
+        return prod;
+      })
+    );
+
+    // Close payment modal and clear cart instantly
     setActivePaymentOrder(null);
     clearCart();
     setIsCartOpen(false);
     triggerNotification(lang === 'en' ? 'Order processed! Starting instant tracking...' : 'অর্ডার সফল হয়েছে! ১০ মিনিটে ডেলিভারি ট্র্যাকিং চালু হয়েছে।');
+
+    // 2. Process Firestore persistence asynchronously in the background
+    (async () => {
+      try {
+        const docRef = doc(db, 'orders', completedOrder.id);
+        await setDoc(docRef, cleanUndefined(completedOrder));
+
+        // Update product stock in Firestore
+        for (const item of completedOrder.items) {
+          try {
+            const productRef = doc(db, 'products', item.product.id);
+            const productSnap = await getDoc(productRef);
+            let currentStock = item.product.stock;
+            if (productSnap.exists()) {
+              const prodData = productSnap.data();
+              if (prodData && typeof prodData.stock === 'number') {
+                currentStock = prodData.stock;
+              }
+            }
+            const newStock = Math.max(0, currentStock - item.quantity);
+            await updateDoc(productRef, {
+              stock: newStock
+            });
+            console.log(`Successfully updated stock for ${item.product.id}: ${currentStock} -> ${newStock}`);
+          } catch (stockErr) {
+            console.error(`Failed to update stock for product ${item.product.id}:`, stockErr);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to save order to Firestore:', err);
+      }
+    })();
   };
 
   // Order status live updater
