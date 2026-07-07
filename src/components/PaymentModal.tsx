@@ -227,7 +227,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
         initial={{ opacity: 0, scale: 0.96, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96 }}
-        className={`w-full overflow-hidden rounded-3xl bg-white shadow-2xl dark:bg-slate-900 border border-slate-100 dark:border-slate-800 transition-all ${
+        className={`w-full max-h-[92vh] overflow-y-auto rounded-3xl bg-white shadow-2xl dark:bg-slate-900 border border-slate-100 dark:border-slate-800 transition-all ${
           step === 'choose' ? 'max-w-4xl' : 'max-w-md'
         }`}
         id="payment-modal-container"
@@ -295,7 +295,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                       </div>
 
                       {/* Map dynamic rendering card list with checkbox/radio styling matching screenshot */}
-                      <div className="space-y-2.5">
+                      <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1">
                         {cartItems.map((item) => (
                           <div 
                             key={item.product.id}
