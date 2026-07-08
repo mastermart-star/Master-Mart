@@ -394,8 +394,15 @@ export default function App() {
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
   const [adminTab, setAdminTab] = useState<'overview' | 'orders' | 'products' | 'reviews'>('overview');
   const [allOrdersList, setAllOrdersList] = useState<Order[]>([]);
-  const [productsList, setProductsList] = useState<Product[]>(PRODUCTS);
+  // IMPORTANT: starts EMPTY, not with the hardcoded demo PRODUCTS array.
+  // The list is only ever filled with what Firestore actually returns, so the
+  // UI can never show fake/default data disguised as real database content.
+  const [productsList, setProductsList] = useState<Product[]>([]);
   const [dbLoading, setDbLoading] = useState<boolean>(true);
+  // True whenever the live Firestore connection fails (wrong project, no
+  // permission, offline, etc). Used to show a visible warning banner instead
+  // of silently falling back to fake data.
+  const [dbConnectionError, setDbConnectionError] = useState<boolean>(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
 
   // Real-time stream products from Firestore
@@ -404,68 +411,40 @@ export default function App() {
     let unsubProducts: (() => void) | null = null;
 
     const setupStream = async () => {
-      let isSeededInDb = false;
-      try {
-        const sysSnap = await getDoc(doc(db, 'settings', 'system'));
-        if (sysSnap.exists() && sysSnap.data()?.isSeeded) {
-          isSeededInDb = true;
-        }
-      } catch (err) {
-        console.warn('Failed to fetch system seeding status:', err);
-      }
-
       if (!active) return;
 
       unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
         if (!active) return;
 
-        if (snapshot.empty) {
-          if (!isSeededInDb) {
-            console.log('Database is empty and not seeded yet. Seeding default products to Firestore...');
-            PRODUCTS.forEach(async (prod) => {
-              try {
-                const docRef = doc(db, 'products', prod.id);
-                await setDoc(docRef, prod);
-              } catch (seedErr) {
-                console.error(`Failed to seed default product ${prod.id}:`, seedErr);
-              }
-            });
-            setDoc(doc(db, 'settings', 'system'), { isSeeded: true })
-              .then(() => { isSeededInDb = true; })
-              .catch(err => console.error('Failed to save system seeding status:', err));
-            setProductsList(PRODUCTS);
-          } else {
-            // The database has been seeded before, but the admin deleted all products, so respect the empty database
-            setProductsList([]);
-          }
-        } else {
-          const items: Product[] = [];
-          snapshot.forEach((docSnap) => {
-            items.push(docSnap.data() as Product);
-          });
+        // Whatever Firestore returns is the truth — empty means empty.
+        // We never auto-inject the hardcoded demo PRODUCTS into a real
+        // database. If you want the demo catalog, use the "Restore Default
+        // Products" button in the Admin Panel, which is an explicit,
+        // one-time, opt-in action.
+        const items: Product[] = [];
+        snapshot.forEach((docSnap) => {
+          items.push(docSnap.data() as Product);
+        });
 
-          // Sort newly added first (usually having p_db_ prefix)
-          items.sort((a, b) => {
-            const isA_Db = a.id.startsWith('p_db_');
-            const isB_Db = b.id.startsWith('p_db_');
-            if (isA_Db && !isB_Db) return -1;
-            if (!isA_Db && isB_Db) return 1;
-            return b.id.localeCompare(a.id);
-          });
-          setProductsList(items);
+        // Sort newly added first (usually having p_db_ prefix)
+        items.sort((a, b) => {
+          const isA_Db = a.id.startsWith('p_db_');
+          const isB_Db = b.id.startsWith('p_db_');
+          if (isA_Db && !isB_Db) return -1;
+          if (!isA_Db && isB_Db) return 1;
+          return b.id.localeCompare(a.id);
+        });
 
-          // If there are products in the DB, ensure the isSeeded setting is marked as true
-          if (!isSeededInDb) {
-            setDoc(doc(db, 'settings', 'system'), { isSeeded: true })
-              .then(() => { isSeededInDb = true; })
-              .catch(err => console.error('Failed to update system seeding status:', err));
-          }
-        }
+        setProductsList(items);
+        setDbConnectionError(false);
         setDbLoading(false);
       }, (err) => {
         console.error('Failed to stream products:', err);
         if (active) {
-          setProductsList(PRODUCTS);
+          // Do NOT replace real (or empty) data with the fake demo array.
+          // Surface a visible connection error instead so the problem is
+          // obvious rather than being masked by fake data.
+          setDbConnectionError(true);
           setDbLoading(false);
           try {
             handleFirestoreError(err, OperationType.LIST, 'products');
@@ -534,9 +513,14 @@ export default function App() {
       const docRef = doc(db, 'products', newProduct.id);
       await setDoc(docRef, cleanUndefined(newProduct));
       console.log('Successfully saved product to Firestore!');
+      setDbConnectionError(false);
       triggerNotification(lang === 'en' ? 'Product successfully saved to Database!' : 'পণ্যটি সফলভাবে ডাটাবেসে যোগ হয়েছে!');
     } catch (err) {
       console.error('CRITICAL: Failed to add product to database:', err);
+      // Roll back the optimistic add — a failed save must never remain
+      // visible in the UI as if it had actually been saved to the database.
+      setProductsList((prev) => prev.filter(p => p.id !== newProduct.id));
+      setDbConnectionError(true);
       try {
         handleFirestoreError(err, OperationType.CREATE, `products/${newProduct.id}`);
       } catch (wrappedErr: any) {
@@ -573,9 +557,13 @@ export default function App() {
     try {
       const docRef = doc(db, 'products', product.id);
       await deleteDoc(docRef);
+      setDbConnectionError(false);
       triggerNotification(lang === 'en' ? 'Product deleted from Database!' : 'পণ্যটি ডাটাবেস থেকে মুছে ফেলা হয়েছে!');
     } catch (err) {
       console.error('Failed to delete product:', err);
+      // Roll back — the product was NOT actually deleted, so put it back.
+      setProductsList((prev) => prev.some(p => p.id === product.id) ? prev : [product, ...prev]);
+      setDbConnectionError(true);
       triggerNotification(lang === 'en' ? 'Failed to delete product.' : 'পণ্যটি মুছতে ব্যর্থ হয়েছে।');
       try {
         handleFirestoreError(err, OperationType.DELETE, `products/${product.id}`);
@@ -608,20 +596,29 @@ export default function App() {
 
   // Update product price or stock in Firestore (Admin tool)
   const handleUpdateProductInDb = async (updatedProduct: Product) => {
-    // Instantly update local state so the UI is responsive immediately
-    setProductsList((prev) => 
-      prev.map(p => p.id === updatedProduct.id ? updatedProduct : p)
-    );
+    // Remember the previous version so we can restore it if the write fails
+    let previousProduct: Product | undefined;
+    setProductsList((prev) => {
+      previousProduct = prev.find(p => p.id === updatedProduct.id);
+      return prev.map(p => p.id === updatedProduct.id ? updatedProduct : p);
+    });
 
     // Run the Firestore write in the background to prevent any UI blocking or hanging in sandboxed iframe previews
     (async () => {
       try {
         const docRef = doc(db, 'products', updatedProduct.id);
         await setDoc(docRef, cleanUndefined(updatedProduct));
-        triggerNotification(lang === 'en' ? 'Product inventory successfully updated!' : 'পণ্য বিবরণী সফলভাবে আপডেট করা হয়েছে!');
+        setDbConnectionError(false);
+        triggerNotification(lang === 'en' ? 'Product inventory successfully updated!' : 'পণ্য বিবরণী সফলভাবে আপডেট করা হয়েছে!');
       } catch (err) {
         console.error('Failed to update product details:', err);
-        triggerNotification(lang === 'en' ? 'Failed to update product.' : 'পণ্য বিবরণী আপডেট করতে ব্যর্থ হয়েছে।');
+        // Roll back to the previous version — the update was NOT actually saved.
+        if (previousProduct) {
+          const restored = previousProduct;
+          setProductsList((prev) => prev.map(p => p.id === updatedProduct.id ? restored : p));
+        }
+        setDbConnectionError(true);
+        triggerNotification(lang === 'en' ? 'Failed to update product.' : 'পণ্য বিবরণী আপডেট করতে ব্যর্থ হয়েছে।');
         try {
           handleFirestoreError(err, OperationType.UPDATE, `products/${updatedProduct.id}`);
         } catch (wrappedErr) {
@@ -857,6 +854,7 @@ export default function App() {
       try {
         const docRef = doc(db, 'orders', completedOrder.id);
         await setDoc(docRef, cleanUndefined(completedOrder));
+        setDbConnectionError(false);
 
         // Update product stock in Firestore
         for (const item of completedOrder.items) {
@@ -881,9 +879,19 @@ export default function App() {
         }
       } catch (err) {
         console.error('Failed to save order to Firestore:', err);
+        // The order was NOT actually saved to the database, even though the
+        // customer already saw a success message. Make this failure visible
+        // instead of letting it silently disappear on next reload.
+        setDbConnectionError(true);
+        triggerNotification(
+          lang === 'en'
+            ? 'Warning: Your order was recorded on this device, but could not reach our server. Please screenshot this and contact support.'
+            : 'সতর্কতা: আপনার অর্ডারটি এই ডিভাইসে রাখা হয়েছে, কিন্তু সার্ভারে পাঠানো যায়নি। দয়া করে স্ক্রিনশট নিয়ে সাপোর্টে যোগাযোগ করুন।'
+        );
       }
     })();
   };
+
 
   // Order status live updater
   const handleUpdateOrderStatus = (orderId: string, newStatus: any, progress: number) => {
@@ -1003,6 +1011,19 @@ export default function App() {
   // Main interactive wrapper HTML Layout definitions
   const appContent = (
     <div className={`flex flex-col ${(isMobileView && windowWidth >= 768) ? 'min-h-full' : 'min-h-screen'} bg-linear-to-b from-slate-50 to-slate-100 text-slate-800 dark:from-slate-950 dark:to-slate-900 dark:text-slate-100`} id="main-application-view">
+      {/* DATABASE CONNECTION ERROR BANNER — shown whenever a real Firestore
+          read/write fails, so problems are always visible instead of being
+          silently hidden behind fake/default data. */}
+      {dbConnectionError && (
+        <div className="bg-red-600 py-2 px-4 text-center text-xs font-bold text-white flex items-center justify-center gap-2 sm:px-8" id="db-connection-error-banner">
+          <span>
+            {lang === 'en'
+              ? '⚠️ Could not connect to the database. Changes may not be saved permanently — check your Firebase setup.'
+              : '⚠️ ডাটাবেসের সাথে সংযোগ করা যায়নি। পরিবর্তনগুলো স্থায়ীভাবে সেভ নাও হতে পারে — আপনার Firebase সেটআপ চেক করুন।'}
+          </span>
+        </div>
+      )}
+
       {/* Top micro promotion strip */}
       <div className="bg-emerald-600 py-1.5 px-4 text-center text-xs font-semibold text-white flex justify-between items-center sm:px-8 dark:bg-emerald-800">
         <span className="flex items-center gap-1.5 mx-auto">
@@ -1416,8 +1437,15 @@ export default function App() {
               {/* Add product button removed for customer-only view */}
             </div>
 
-            {/* Error no products matching search screen */}
-            {filteredProducts.length === 0 ? (
+            {/* Loading / Error no products matching search screen */}
+            {dbLoading ? (
+              <div className="rounded-3xl bg-white p-16 text-center border border-dashed border-slate-200 dark:bg-slate-900 dark:border-slate-800">
+                <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent" />
+                <p className="text-slate-400 italic text-sm mt-4">
+                  {lang === 'en' ? 'Loading products from database…' : 'ডাটাবেস থেকে পণ্য লোড হচ্ছে…'}
+                </p>
+              </div>
+            ) : filteredProducts.length === 0 ? (
               <div className="rounded-3xl bg-white p-16 text-center border border-dashed border-slate-200 dark:bg-slate-900 dark:border-slate-800">
                 <p className="text-slate-400 italic text-sm">{dict.noProducts}</p>
                 <button
