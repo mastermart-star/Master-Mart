@@ -423,16 +423,43 @@ export default function App() {
         // one-time, opt-in action.
         const items: Product[] = [];
         snapshot.forEach((docSnap) => {
-          items.push(docSnap.data() as Product);
+          try {
+            const raw: any = docSnap.data() || {};
+            // IMPORTANT: the Firestore Document ID and an internal "id"
+            // field are two different things. A product typed directly
+            // into the Firebase Console has a Document ID but usually has
+            // NO "id" field inside its data — always fall back to the real
+            // document ID so it never ends up undefined.
+            const normalized: Product = {
+              id: typeof raw.id === 'string' && raw.id ? raw.id : docSnap.id,
+              nameEn: raw.nameEn ?? raw.name ?? 'Unnamed product',
+              nameBn: raw.nameBn ?? raw.name ?? raw.nameEn ?? 'নামহীন পণ্য',
+              category: raw.category ?? 'all',
+              price: typeof raw.price === 'number' ? raw.price : Number(raw.price) || 0,
+              unitEn: raw.unitEn ?? raw.unit ?? 'pc',
+              unitBn: raw.unitBn ?? raw.unit ?? 'পিস',
+              rating: typeof raw.rating === 'number' ? raw.rating : Number(raw.rating) || 0,
+              image: raw.image ?? '',
+              discountPrice: typeof raw.discountPrice === 'number' ? raw.discountPrice : undefined,
+              stock: typeof raw.stock === 'number' ? raw.stock : Number(raw.stock) || 0,
+              isVeg: typeof raw.isVeg === 'boolean' ? raw.isVeg : undefined,
+              descriptionEn: raw.descriptionEn,
+              descriptionBn: raw.descriptionBn,
+            };
+            items.push(normalized);
+          } catch (parseErr) {
+            // Never let one malformed document take down the entire list.
+            console.error(`Skipping malformed product document ${docSnap.id}:`, parseErr);
+          }
         });
 
         // Sort newly added first (usually having p_db_ prefix)
         items.sort((a, b) => {
-          const isA_Db = a.id.startsWith('p_db_');
-          const isB_Db = b.id.startsWith('p_db_');
+          const isA_Db = (a.id || '').startsWith('p_db_');
+          const isB_Db = (b.id || '').startsWith('p_db_');
           if (isA_Db && !isB_Db) return -1;
           if (!isA_Db && isB_Db) return 1;
-          return b.id.localeCompare(a.id);
+          return (b.id || '').localeCompare(a.id || '');
         });
 
         setProductsList(items);
@@ -946,9 +973,10 @@ export default function App() {
   // Filter Catalog catalog items based on choice & searching
   const filteredProducts = productsList.filter((prod) => {
     const matchesCategory = selectedCategoryId === 'all' || prod.category === selectedCategoryId;
-    const matchesSearch =
-      prod.nameEn.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      prod.nameBn.toLowerCase().includes(searchQuery.toLowerCase());
+    const nameEn = (prod.nameEn || '').toLowerCase();
+    const nameBn = (prod.nameBn || '').toLowerCase();
+    const q = searchQuery.toLowerCase();
+    const matchesSearch = nameEn.includes(q) || nameBn.includes(q);
     return matchesCategory && matchesSearch;
   });
 
