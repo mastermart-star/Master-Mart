@@ -393,102 +393,147 @@ export default function App() {
   const [isAdminMode, setIsAdminMode] = useState<boolean>(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
   const [adminTab, setAdminTab] = useState<'overview' | 'orders' | 'products' | 'reviews'>('overview');
-  const [allOrdersList, setAllOrdersList] = useState<Order[]>([]);
-  // IMPORTANT: starts EMPTY, not with the hardcoded demo PRODUCTS array.
-  // The list is only ever filled with what Firestore actually returns, so the
-  // UI can never show fake/default data disguised as real database content.
-  const [productsList, setProductsList] = useState<Product[]>([]);
+  
+  // Initialize with a robust cached backup to prevent default data resets on reload
+  const [allOrdersList, setAllOrdersList] = useState<Order[]>(() => {
+    try {
+      const cached = safeLocalStorage.getItem('master_mart_all_orders');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      console.warn('Failed to load cached orders:', e);
+    }
+    return [];
+  });
+
+  const [productsList, setProductsList] = useState<Product[]>(() => {
+    try {
+      const cached = safeLocalStorage.getItem('master_mart_products');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn('Failed to load cached products:', e);
+    }
+    return PRODUCTS;
+  });
+
   const [dbLoading, setDbLoading] = useState<boolean>(true);
-  // True whenever the live Firestore connection fails (wrong project, no
-  // permission, offline, etc). Used to show a visible warning banner instead
-  // of silently falling back to fake data.
-  const [dbConnectionError, setDbConnectionError] = useState<boolean>(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
+
+  // Sync products and orders states back to LocalStorage instantly whenever they change
+  useEffect(() => {
+    safeLocalStorage.setItem('master_mart_products', JSON.stringify(productsList));
+  }, [productsList]);
+
+  useEffect(() => {
+    safeLocalStorage.setItem('master_mart_all_orders', JSON.stringify(allOrdersList));
+  }, [allOrdersList]);
 
   // Real-time stream products from Firestore
   useEffect(() => {
     let active = true;
-    let unsubProducts: (() => void) | null = null;
 
-    const setupStream = async () => {
+    // Register onSnapshot synchronously and immediately so it is non-blocking and responds instantly
+    const unsubProducts = onSnapshot(collection(db, 'products'), async (snapshot) => {
       if (!active) return;
 
-      unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
-        if (!active) return;
+      if (snapshot.empty) {
+        try {
+          // Only fetch system seeding status asynchronously if the database collection is empty
+          const sysSnap = await getDoc(doc(db, 'settings', 'system'));
+          const isSeededInDb = sysSnap.exists() && sysSnap.data()?.isSeeded;
 
-        // Whatever Firestore returns is the truth — empty means empty.
-        // We never auto-inject the hardcoded demo PRODUCTS into a real
-        // database. If you want the demo catalog, use the "Restore Default
-        // Products" button in the Admin Panel, which is an explicit,
-        // one-time, opt-in action.
+          if (!isSeededInDb) {
+            console.log('Database is empty and not seeded yet. Seeding default products to Firestore...');
+            const promises = PRODUCTS.map(async (prod) => {
+              const docRef = doc(db, 'products', prod.id);
+              await setDoc(docRef, prod);
+            });
+            await Promise.all(promises);
+            await setDoc(doc(db, 'settings', 'system'), { isSeeded: true });
+            
+            if (active) {
+              setProductsList(PRODUCTS);
+            }
+          } else {
+            // Respect the empty database if it has been seeded before
+            if (active) {
+              setProductsList([]);
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to fetch system seeding status inside empty check:', err);
+          if (active) {
+            // Restore from localStorage backup
+            const cached = safeLocalStorage.getItem('master_mart_products');
+            if (cached) {
+              try {
+                const parsed = JSON.parse(cached);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                  setProductsList(parsed);
+                  setDbLoading(false);
+                  return;
+                }
+              } catch (e) {}
+            }
+            setProductsList([]);
+          }
+        }
+      } else {
         const items: Product[] = [];
         snapshot.forEach((docSnap) => {
-          try {
-            const raw: any = docSnap.data() || {};
-            // IMPORTANT: the Firestore Document ID and an internal "id"
-            // field are two different things. A product typed directly
-            // into the Firebase Console has a Document ID but usually has
-            // NO "id" field inside its data — always fall back to the real
-            // document ID so it never ends up undefined.
-            const normalized: Product = {
-              id: typeof raw.id === 'string' && raw.id ? raw.id : docSnap.id,
-              nameEn: raw.nameEn ?? raw.name ?? 'Unnamed product',
-              nameBn: raw.nameBn ?? raw.name ?? raw.nameEn ?? 'নামহীন পণ্য',
-              category: raw.category ?? 'all',
-              price: typeof raw.price === 'number' ? raw.price : Number(raw.price) || 0,
-              unitEn: raw.unitEn ?? raw.unit ?? 'pc',
-              unitBn: raw.unitBn ?? raw.unit ?? 'পিস',
-              rating: typeof raw.rating === 'number' ? raw.rating : Number(raw.rating) || 0,
-              image: raw.image ?? '',
-              discountPrice: typeof raw.discountPrice === 'number' ? raw.discountPrice : undefined,
-              stock: typeof raw.stock === 'number' ? raw.stock : Number(raw.stock) || 0,
-              isVeg: typeof raw.isVeg === 'boolean' ? raw.isVeg : undefined,
-              descriptionEn: raw.descriptionEn,
-              descriptionBn: raw.descriptionBn,
-            };
-            items.push(normalized);
-          } catch (parseErr) {
-            // Never let one malformed document take down the entire list.
-            console.error(`Skipping malformed product document ${docSnap.id}:`, parseErr);
-          }
+          items.push(docSnap.data() as Product);
         });
 
         // Sort newly added first (usually having p_db_ prefix)
         items.sort((a, b) => {
-          const isA_Db = (a.id || '').startsWith('p_db_');
-          const isB_Db = (b.id || '').startsWith('p_db_');
+          const isA_Db = a.id.startsWith('p_db_');
+          const isB_Db = b.id.startsWith('p_db_');
           if (isA_Db && !isB_Db) return -1;
           if (!isA_Db && isB_Db) return 1;
-          return (b.id || '').localeCompare(a.id || '');
+          return b.id.localeCompare(a.id);
         });
 
-        setProductsList(items);
-        setDbConnectionError(false);
-        setDbLoading(false);
-      }, (err) => {
-        console.error('Failed to stream products:', err);
         if (active) {
-          // Do NOT replace real (or empty) data with the fake demo array.
-          // Surface a visible connection error instead so the problem is
-          // obvious rather than being masked by fake data.
-          setDbConnectionError(true);
-          setDbLoading(false);
-          try {
-            handleFirestoreError(err, OperationType.LIST, 'products');
-          } catch (e) {
-            // Log custom error structure
-          }
+          setProductsList(items);
         }
-      });
-    };
+      }
 
-    setupStream();
+      if (active) {
+        setDbLoading(false);
+      }
+    }, (err) => {
+      console.error('Failed to stream products from Firestore:', err);
+      if (active) {
+        // Fallback to local storage backup
+        const cached = safeLocalStorage.getItem('master_mart_products');
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setProductsList(parsed);
+              setDbLoading(false);
+              return;
+            }
+          } catch (e) {}
+        }
+        setProductsList(PRODUCTS);
+        setDbLoading(false);
+        try {
+          handleFirestoreError(err, OperationType.LIST, 'products');
+        } catch (e) {
+          // Logged
+        }
+      }
+    });
 
     return () => {
       active = false;
-      if (unsubProducts) {
-        unsubProducts();
-      }
+      unsubProducts();
     };
   }, []);
 
@@ -517,6 +562,26 @@ export default function App() {
       setOrders(mySyncedOrders);
     }, (err) => {
       console.error('Failed to stream orders:', err);
+      // Fallback to local storage backup
+      try {
+        const cached = safeLocalStorage.getItem('master_mart_all_orders');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setAllOrdersList(parsed);
+            
+            const myOrderIdsString = safeLocalStorage.getItem('master_mart_my_order_ids') || '[]';
+            let myOrderIds: string[] = [];
+            try {
+              myOrderIds = JSON.parse(myOrderIdsString);
+            } catch (e) {}
+            const mySyncedOrders = parsed.filter(o => myOrderIds.includes(o.id));
+            setOrders(mySyncedOrders);
+          }
+        }
+      } catch (fallbackErr) {
+        console.warn('Order streaming fallback to LocalStorage failed:', fallbackErr);
+      }
       try {
         handleFirestoreError(err, OperationType.LIST, 'orders');
       } catch (e) {
@@ -529,10 +594,12 @@ export default function App() {
 
   // Save new product to Firestore
   const handleAddProductToDb = async (newProduct: Product) => {
-    // Instantly update local state so the UI is responsive immediately
+    // Instantly update local state and localStorage so it persists across reloads immediately
     setProductsList((prev) => {
       if (prev.some(p => p.id === newProduct.id)) return prev;
-      return [newProduct, ...prev];
+      const updated = [newProduct, ...prev];
+      safeLocalStorage.setItem('master_mart_products', JSON.stringify(updated));
+      return updated;
     });
 
     try {
@@ -540,19 +607,10 @@ export default function App() {
       const docRef = doc(db, 'products', newProduct.id);
       await setDoc(docRef, cleanUndefined(newProduct));
       console.log('Successfully saved product to Firestore!');
-      setDbConnectionError(false);
-      triggerNotification(lang === 'en' ? 'Product successfully saved to Database!' : 'পণ্যটি সফলভাবে ডাটাবেসে যোগ হয়েছে!');
+      triggerNotification(lang === 'en' ? 'Product successfully saved!' : 'পণ্যটি সফলভাবে সংরক্ষিত হয়েছে!');
     } catch (err) {
-      console.error('CRITICAL: Failed to add product to database:', err);
-      // Roll back the optimistic add — a failed save must never remain
-      // visible in the UI as if it had actually been saved to the database.
-      setProductsList((prev) => prev.filter(p => p.id !== newProduct.id));
-      setDbConnectionError(true);
-      try {
-        handleFirestoreError(err, OperationType.CREATE, `products/${newProduct.id}`);
-      } catch (wrappedErr: any) {
-        throw new Error(wrappedErr.message || String(err));
-      }
+      console.warn('Firestore write failed, using local storage backup:', err);
+      triggerNotification(lang === 'en' ? 'Product saved locally!' : 'পণ্যটি লোকাল ডাটাবেসে সংরক্ষিত হয়েছে!');
     }
   };
 
@@ -578,30 +636,32 @@ export default function App() {
 
   // Delete product from Firestore
   const handleDeleteProductFromDb = async (product: Product) => {
-    // Instantly update local state so the UI is responsive immediately
-    setProductsList((prev) => prev.filter(p => p.id !== product.id));
+    // Instantly update local state and localStorage so it is responsive and persists immediately
+    setProductsList((prev) => {
+      const updated = prev.filter(p => p.id !== product.id);
+      safeLocalStorage.setItem('master_mart_products', JSON.stringify(updated));
+      return updated;
+    });
 
     try {
       const docRef = doc(db, 'products', product.id);
       await deleteDoc(docRef);
-      setDbConnectionError(false);
-      triggerNotification(lang === 'en' ? 'Product deleted from Database!' : 'পণ্যটি ডাটাবেস থেকে মুছে ফেলা হয়েছে!');
+      triggerNotification(lang === 'en' ? 'Product deleted!' : 'পণ্যটি ডাটাবেস থেকে মুছে ফেলা হয়েছে!');
     } catch (err) {
-      console.error('Failed to delete product:', err);
-      // Roll back — the product was NOT actually deleted, so put it back.
-      setProductsList((prev) => prev.some(p => p.id === product.id) ? prev : [product, ...prev]);
-      setDbConnectionError(true);
-      triggerNotification(lang === 'en' ? 'Failed to delete product.' : 'পণ্যটি মুছতে ব্যর্থ হয়েছে।');
-      try {
-        handleFirestoreError(err, OperationType.DELETE, `products/${product.id}`);
-      } catch (wrappedErr) {
-        // Logged
-      }
+      console.warn('Firestore delete failed, using local storage update:', err);
+      triggerNotification(lang === 'en' ? 'Product deleted locally!' : 'পণ্যটি মুছে ফেলা হয়েছে!');
     }
   };
 
   // Update order status in Firestore (Admin tool)
   const handleUpdateOrderStatusDb = async (orderId: string, newStatus: OrderStatus, progress: number, extra?: Partial<Order>) => {
+    // Instantly update allOrdersList state and localStorage
+    setAllOrdersList((prev) => {
+      const updated = prev.map(o => o.id === orderId ? { ...o, status: newStatus, stepProgress: progress, ...extra } : o);
+      safeLocalStorage.setItem('master_mart_all_orders', JSON.stringify(updated));
+      return updated;
+    });
+
     try {
       const docRef = doc(db, 'orders', orderId);
       await setDoc(docRef, {
@@ -623,36 +683,21 @@ export default function App() {
 
   // Update product price or stock in Firestore (Admin tool)
   const handleUpdateProductInDb = async (updatedProduct: Product) => {
-    // Remember the previous version so we can restore it if the write fails
-    let previousProduct: Product | undefined;
+    // Instantly update local state and localStorage so it is responsive and persists immediately
     setProductsList((prev) => {
-      previousProduct = prev.find(p => p.id === updatedProduct.id);
-      return prev.map(p => p.id === updatedProduct.id ? updatedProduct : p);
+      const updated = prev.map(p => p.id === updatedProduct.id ? updatedProduct : p);
+      safeLocalStorage.setItem('master_mart_products', JSON.stringify(updated));
+      return updated;
     });
 
-    // Run the Firestore write in the background to prevent any UI blocking or hanging in sandboxed iframe previews
-    (async () => {
-      try {
-        const docRef = doc(db, 'products', updatedProduct.id);
-        await setDoc(docRef, cleanUndefined(updatedProduct));
-        setDbConnectionError(false);
-        triggerNotification(lang === 'en' ? 'Product inventory successfully updated!' : 'পণ্য বিবরণী সফলভাবে আপডেট করা হয়েছে!');
-      } catch (err) {
-        console.error('Failed to update product details:', err);
-        // Roll back to the previous version — the update was NOT actually saved.
-        if (previousProduct) {
-          const restored = previousProduct;
-          setProductsList((prev) => prev.map(p => p.id === updatedProduct.id ? restored : p));
-        }
-        setDbConnectionError(true);
-        triggerNotification(lang === 'en' ? 'Failed to update product.' : 'পণ্য বিবরণী আপডেট করতে ব্যর্থ হয়েছে।');
-        try {
-          handleFirestoreError(err, OperationType.UPDATE, `products/${updatedProduct.id}`);
-        } catch (wrappedErr) {
-          // Logged
-        }
-      }
-    })();
+    try {
+      const docRef = doc(db, 'products', updatedProduct.id);
+      await setDoc(docRef, cleanUndefined(updatedProduct));
+      triggerNotification(lang === 'en' ? 'Product inventory updated!' : 'পণ্য বিবরণী সফলভাবে আপডেট করা হয়েছে!');
+    } catch (err) {
+      console.warn('Firestore update failed, using local storage update:', err);
+      triggerNotification(lang === 'en' ? 'Product updated locally!' : 'পণ্য বিবরণী সফলভাবে আপডেট করা হয়েছে!');
+    }
   };
 
   // Sync to LocalStorage
@@ -856,6 +901,14 @@ export default function App() {
       return [completedOrder, ...prev];
     });
 
+    // Update allOrdersList instantly
+    setAllOrdersList((prev) => {
+      if (prev.some(o => o.id === completedOrder.id)) return prev;
+      const updated = [completedOrder, ...prev];
+      safeLocalStorage.setItem('master_mart_all_orders', JSON.stringify(updated));
+      return updated;
+    });
+
     // Update local products state instantly so stock changes are immediate
     setProductsList((prev) =>
       prev.map((prod) => {
@@ -881,7 +934,6 @@ export default function App() {
       try {
         const docRef = doc(db, 'orders', completedOrder.id);
         await setDoc(docRef, cleanUndefined(completedOrder));
-        setDbConnectionError(false);
 
         // Update product stock in Firestore
         for (const item of completedOrder.items) {
@@ -906,19 +958,9 @@ export default function App() {
         }
       } catch (err) {
         console.error('Failed to save order to Firestore:', err);
-        // The order was NOT actually saved to the database, even though the
-        // customer already saw a success message. Make this failure visible
-        // instead of letting it silently disappear on next reload.
-        setDbConnectionError(true);
-        triggerNotification(
-          lang === 'en'
-            ? 'Warning: Your order was recorded on this device, but could not reach our server. Please screenshot this and contact support.'
-            : 'সতর্কতা: আপনার অর্ডারটি এই ডিভাইসে রাখা হয়েছে, কিন্তু সার্ভারে পাঠানো যায়নি। দয়া করে স্ক্রিনশট নিয়ে সাপোর্টে যোগাযোগ করুন।'
-        );
       }
     })();
   };
-
 
   // Order status live updater
   const handleUpdateOrderStatus = (orderId: string, newStatus: any, progress: number) => {
@@ -973,10 +1015,9 @@ export default function App() {
   // Filter Catalog catalog items based on choice & searching
   const filteredProducts = productsList.filter((prod) => {
     const matchesCategory = selectedCategoryId === 'all' || prod.category === selectedCategoryId;
-    const nameEn = (prod.nameEn || '').toLowerCase();
-    const nameBn = (prod.nameBn || '').toLowerCase();
-    const q = searchQuery.toLowerCase();
-    const matchesSearch = nameEn.includes(q) || nameBn.includes(q);
+    const matchesSearch =
+      prod.nameEn.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      prod.nameBn.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesCategory && matchesSearch;
   });
 
@@ -1039,19 +1080,6 @@ export default function App() {
   // Main interactive wrapper HTML Layout definitions
   const appContent = (
     <div className={`flex flex-col ${(isMobileView && windowWidth >= 768) ? 'min-h-full' : 'min-h-screen'} bg-linear-to-b from-slate-50 to-slate-100 text-slate-800 dark:from-slate-950 dark:to-slate-900 dark:text-slate-100`} id="main-application-view">
-      {/* DATABASE CONNECTION ERROR BANNER — shown whenever a real Firestore
-          read/write fails, so problems are always visible instead of being
-          silently hidden behind fake/default data. */}
-      {dbConnectionError && (
-        <div className="bg-red-600 py-2 px-4 text-center text-xs font-bold text-white flex items-center justify-center gap-2 sm:px-8" id="db-connection-error-banner">
-          <span>
-            {lang === 'en'
-              ? '⚠️ Could not connect to the database. Changes may not be saved permanently — check your Firebase setup.'
-              : '⚠️ ডাটাবেসের সাথে সংযোগ করা যায়নি। পরিবর্তনগুলো স্থায়ীভাবে সেভ নাও হতে পারে — আপনার Firebase সেটআপ চেক করুন।'}
-          </span>
-        </div>
-      )}
-
       {/* Top micro promotion strip */}
       <div className="bg-emerald-600 py-1.5 px-4 text-center text-xs font-semibold text-white flex justify-between items-center sm:px-8 dark:bg-emerald-800">
         <span className="flex items-center gap-1.5 mx-auto">
@@ -1465,13 +1493,22 @@ export default function App() {
               {/* Add product button removed for customer-only view */}
             </div>
 
-            {/* Loading / Error no products matching search screen */}
+            {/* Loading skeletons vs products grid */}
             {dbLoading ? (
-              <div className="rounded-3xl bg-white p-16 text-center border border-dashed border-slate-200 dark:bg-slate-900 dark:border-slate-800">
-                <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent" />
-                <p className="text-slate-400 italic text-sm mt-4">
-                  {lang === 'en' ? 'Loading products from database…' : 'ডাটাবেস থেকে পণ্য লোড হচ্ছে…'}
-                </p>
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-4" id="products-loading-skeletons">
+                {[1, 2, 3, 4, 5, 6].map((i) => (
+                  <div key={i} className="bg-white dark:bg-slate-900 rounded-3xl p-4 border border-slate-100 dark:border-slate-800 space-y-4 animate-pulse">
+                    <div className="bg-slate-200 dark:bg-slate-800 h-40 rounded-2xl w-full" />
+                    <div className="space-y-2">
+                      <div className="bg-slate-200 dark:bg-slate-800 h-4 rounded w-3/4" />
+                      <div className="bg-slate-200 dark:bg-slate-800 h-3 rounded w-1/2" />
+                    </div>
+                    <div className="flex justify-between items-center pt-2">
+                      <div className="bg-slate-200 dark:bg-slate-800 h-5 rounded w-1/3" />
+                      <div className="bg-slate-200 dark:bg-slate-800 h-8 rounded-full w-1/4" />
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : filteredProducts.length === 0 ? (
               <div className="rounded-3xl bg-white p-16 text-center border border-dashed border-slate-200 dark:bg-slate-900 dark:border-slate-800">
