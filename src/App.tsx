@@ -167,6 +167,19 @@ const safeLocalStorage = {
     }
     safeCookies.setItem(key, value);
     inMemoryStore[key] = value;
+  },
+  removeItem(key: string): void {
+    try {
+      localStorage.removeItem(key);
+    } catch (e) {
+      console.warn(`localStorage.removeItem blocked/failed for key "${key}":`, e);
+    }
+    try {
+      if (typeof document !== 'undefined') {
+        document.cookie = `${key}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax`;
+      }
+    } catch (e) {}
+    delete inMemoryStore[key];
   }
 };
 
@@ -190,6 +203,17 @@ function cleanUndefined<T>(obj: T): T {
   });
   return clean;
 }
+
+const getDeletedProductIds = (): string[] => {
+  try {
+    const cached = safeLocalStorage.getItem('master_mart_deleted_product_ids');
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {}
+  return [];
+};
 
 export default function App() {
   // Lang preference
@@ -410,18 +434,22 @@ export default function App() {
 
   const [productsList, setProductsList] = useState<Product[]>(() => {
     try {
+      const deletedIds = getDeletedProductIds();
       const cached = safeLocalStorage.getItem('master_mart_products');
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.filter(p => !deletedIds.includes(p.id));
+        }
       }
     } catch (e) {
       console.warn('Failed to load cached products:', e);
     }
-    return PRODUCTS;
+    const deletedIds = getDeletedProductIds();
+    return PRODUCTS.filter(p => !deletedIds.includes(p.id));
   });
 
-  const [dbLoading, setDbLoading] = useState<boolean>(true);
+  const [dbLoading, setDbLoading] = useState<boolean>(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
 
   // Sync products and orders states back to LocalStorage instantly whenever they change
@@ -441,66 +469,66 @@ export default function App() {
     const unsubProducts = onSnapshot(collection(db, 'products'), async (snapshot) => {
       if (!active) return;
 
-      if (snapshot.empty) {
-        try {
-          // Only fetch system seeding status asynchronously if the database collection is empty
-          const sysSnap = await getDoc(doc(db, 'settings', 'system'));
-          const isSeededInDb = sysSnap.exists() && sysSnap.data()?.isSeeded;
+      const deletedIds = getDeletedProductIds();
 
-          if (!isSeededInDb) {
-            console.log('Database is empty and not seeded yet. Seeding default products to Firestore...');
-            const promises = PRODUCTS.map(async (prod) => {
-              const docRef = doc(db, 'products', prod.id);
-              await setDoc(docRef, prod);
-            });
-            await Promise.all(promises);
-            await setDoc(doc(db, 'settings', 'system'), { isSeeded: true });
-            
-            if (active) {
-              setProductsList(PRODUCTS);
-            }
-          } else {
-            // Respect the empty database if it has been seeded before
-            if (active) {
-              setProductsList([]);
-            }
-          }
-        } catch (err) {
-          console.warn('Failed to fetch system seeding status inside empty check:', err);
-          if (active) {
-            // Restore from localStorage backup
-            const cached = safeLocalStorage.getItem('master_mart_products');
-            if (cached) {
-              try {
-                const parsed = JSON.parse(cached);
-                if (Array.isArray(parsed) && parsed.length > 0) {
-                  setProductsList(parsed);
-                  setDbLoading(false);
-                  return;
-                }
-              } catch (e) {}
-            }
-            setProductsList([]);
+      // Retrieve locally saved products from localStorage to prevent loss of newly added products
+      let localProducts: Product[] = [];
+      try {
+        const cached = safeLocalStorage.getItem('master_mart_products');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) {
+            localProducts = parsed;
           }
         }
-      } else {
-        const items: Product[] = [];
+      } catch (e) {
+        console.warn('Failed to parse cached products in onSnapshot:', e);
+      }
+
+      const dbItems: Product[] = [];
+      if (!snapshot.empty) {
         snapshot.forEach((docSnap) => {
-          items.push(docSnap.data() as Product);
+          dbItems.push(docSnap.data() as Product);
         });
+      }
 
-        // Sort newly added first (usually having p_db_ prefix)
-        items.sort((a, b) => {
-          const isA_Db = a.id.startsWith('p_db_');
-          const isB_Db = b.id.startsWith('p_db_');
-          if (isA_Db && !isB_Db) return -1;
-          if (!isA_Db && isB_Db) return 1;
-          return b.id.localeCompare(a.id);
-        });
-
-        if (active) {
-          setProductsList(items);
+      // Merge default products, local products, and db items
+      const productMap = new Map<string, Product>();
+      
+      // 1. Add default products that are not deleted
+      PRODUCTS.forEach(p => {
+        if (!deletedIds.includes(p.id)) {
+          productMap.set(p.id, p);
         }
+      });
+
+      // 2. Add local storage products (including custom newly added products)
+      localProducts.forEach(p => {
+        if (!deletedIds.includes(p.id)) {
+          productMap.set(p.id, p);
+        }
+      });
+
+      // 3. Overwrite/add with db products from Firestore
+      dbItems.forEach(p => {
+        if (!deletedIds.includes(p.id)) {
+          productMap.set(p.id, p);
+        }
+      });
+
+      const mergedItems = Array.from(productMap.values());
+
+      // Sort newly added first (usually having p_db_ prefix)
+      mergedItems.sort((a, b) => {
+        const isA_Db = a.id.startsWith('p_db_');
+        const isB_Db = b.id.startsWith('p_db_');
+        if (isA_Db && !isB_Db) return -1;
+        if (!isA_Db && isB_Db) return 1;
+        return b.id.localeCompare(a.id);
+      });
+
+      if (active) {
+        setProductsList(mergedItems);
       }
 
       if (active) {
@@ -509,19 +537,22 @@ export default function App() {
     }, (err) => {
       console.error('Failed to stream products from Firestore:', err);
       if (active) {
-        // Fallback to local storage backup
+        // Fallback to local storage backup or default products
+        const deletedIds = getDeletedProductIds();
         const cached = safeLocalStorage.getItem('master_mart_products');
         if (cached) {
           try {
             const parsed = JSON.parse(cached);
             if (Array.isArray(parsed) && parsed.length > 0) {
-              setProductsList(parsed);
+              const filteredCached = parsed.filter(p => !deletedIds.includes(p.id));
+              setProductsList(filteredCached);
               setDbLoading(false);
               return;
             }
           } catch (e) {}
         }
-        setProductsList(PRODUCTS);
+        const availableDefault = PRODUCTS.filter(p => !deletedIds.includes(p.id));
+        setProductsList(availableDefault);
         setDbLoading(false);
         try {
           handleFirestoreError(err, OperationType.LIST, 'products');
@@ -617,6 +648,13 @@ export default function App() {
   // Restore all original default products to Firestore
   const handleRestoreDefaultProducts = async () => {
     try {
+      safeLocalStorage.removeItem('master_mart_deleted_product_ids');
+    } catch (e) {}
+
+    setProductsList(PRODUCTS);
+    safeLocalStorage.setItem('master_mart_products', JSON.stringify(PRODUCTS));
+
+    try {
       console.log('Restoring default products to Firestore...');
       const promises = PRODUCTS.map(async (prod) => {
         const docRef = doc(db, 'products', prod.id);
@@ -636,6 +674,17 @@ export default function App() {
 
   // Delete product from Firestore
   const handleDeleteProductFromDb = async (product: Product) => {
+    // Record as deleted so default products do not reappear if database is out of sync or empty
+    try {
+      const deletedIds = getDeletedProductIds();
+      if (!deletedIds.includes(product.id)) {
+        const updatedDeleted = [...deletedIds, product.id];
+        safeLocalStorage.setItem('master_mart_deleted_product_ids', JSON.stringify(updatedDeleted));
+      }
+    } catch (e) {
+      console.warn('Failed to record deleted product ID:', e);
+    }
+
     // Instantly update local state and localStorage so it is responsive and persists immediately
     setProductsList((prev) => {
       const updated = prev.filter(p => p.id !== product.id);
