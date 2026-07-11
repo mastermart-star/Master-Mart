@@ -451,6 +451,7 @@ export default function App() {
 
   const [dbLoading, setDbLoading] = useState<boolean>(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
+  const [firebaseError, setFirebaseError] = useState<string | null>(null);
 
   // Sync products and orders states back to LocalStorage instantly whenever they change
   useEffect(() => {
@@ -529,6 +530,7 @@ export default function App() {
 
       if (active) {
         setProductsList(mergedItems);
+        setFirebaseError(null);
       }
 
       if (active) {
@@ -537,6 +539,7 @@ export default function App() {
     }, (err) => {
       console.error('Failed to stream products from Firestore:', err);
       if (active) {
+        setFirebaseError(err instanceof Error ? err.message : String(err));
         // Fallback to local storage backup or default products
         const deletedIds = getDeletedProductIds();
         const cached = safeLocalStorage.getItem('master_mart_products');
@@ -638,9 +641,11 @@ export default function App() {
       const docRef = doc(db, 'products', newProduct.id);
       await setDoc(docRef, cleanUndefined(newProduct));
       console.log('Successfully saved product to Firestore!');
+      setFirebaseError(null);
       triggerNotification(lang === 'en' ? 'Product successfully saved!' : 'পণ্যটি সফলভাবে সংরক্ষিত হয়েছে!');
-    } catch (err) {
+    } catch (err: any) {
       console.warn('Firestore write failed, using local storage backup:', err);
+      setFirebaseError(err instanceof Error ? err.message : String(err));
       triggerNotification(lang === 'en' ? 'Product saved locally!' : 'পণ্যটি লোকাল ডাটাবেসে সংরক্ষিত হয়েছে!');
     }
   };
@@ -1136,6 +1141,16 @@ export default function App() {
           {dict.tagline}
         </span>
       </div>
+
+      {firebaseError && (
+        <div className="bg-amber-500/10 dark:bg-amber-950/20 border-b border-amber-500/30 text-amber-800 dark:text-amber-300 py-2 px-4 text-xs font-medium text-center">
+          <span className="inline-flex items-center gap-1.5">
+            ⚠️ {lang === 'en' 
+              ? 'Database Offline/Restricted: Sync is currently active in this browser only.' 
+              : 'ডাটাবেস কানেকশন সীমাবদ্ধ: ডাটা কেবল এই ব্রাউজারেই সেভ হচ্ছে এবং অন্য ব্রাউজারে সিঙ্ক হবে না।'}
+          </span>
+        </div>
+      )}
 
       {/* Main Navbar */}
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md shadow-xs border-b border-slate-100 dark:bg-slate-900/90 dark:border-slate-800">
@@ -1940,6 +1955,27 @@ export default function App() {
   if (isAdminMode) {
     return (
       <>
+        {firebaseError && (
+          <div className="bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-900/50 p-4 text-amber-800 dark:text-amber-300 text-sm">
+            <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-3 font-medium">
+              <div className="flex items-start gap-2.5">
+                <span className="text-xl">⚠️</span>
+                <div>
+                  <p className="font-bold">
+                    {lang === 'en' 
+                      ? 'Database Sync Warning (Firebase/Domain Restriction)' 
+                      : 'ডাটাবেস সিঙ্ক সতর্কতা (ফায়ারবেস/ডোমেন রেস্ট্রিকশন)'}
+                  </p>
+                  <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
+                    {lang === 'en'
+                      ? `Your new products are currently being saved in your local browser only (fallback active). If you are hosting on Vercel, Google Cloud's API Key domain restriction is likely blocking Firestore. To resolve this, please configure your own personal Firebase project inside "firebase-applet-config.json" or authorize "master-mart-beta.vercel.app" in your Google Cloud API Credentials.`
+                      : `আপনার নতুন প্রোডাক্টগুলো বর্তমানে কেবল আপনার ব্রাউজারেই সেভ হচ্ছে (লোকাল ব্যাকআপ সক্রিয়)। আপনি Vercel ডোমেন থেকে এক্সেস করায় Google Cloud-এর API Key ডোমেন রেস্ট্রিকশন সম্ভবত ফায়ারবেস ব্লক করছে। সমাধান করতে আপনার নিজস্ব ফায়ারবেস ক্রেডেনশিয়াল রুট ডিরেক্টরির "firebase-applet-config.json" এ বসান অথবা Google Cloud এ ডোমেনটি অনুমতি দিন।`}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         <AdminPanel
           lang={lang}
           onClose={() => setIsAdminMode(false)}
