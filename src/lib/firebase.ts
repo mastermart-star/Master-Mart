@@ -21,6 +21,19 @@ const finalConfig = {
   firestoreDatabaseId: getEnvValue('VITE_FIREBASE_FIRESTORE_DATABASE_ID') || firebaseConfig.firestoreDatabaseId || ''
 };
 
+// Auto-detect if user has configured their own personal Firebase project but left the AI Studio custom database ID intact.
+// Personal projects only have the '(default)' database. AI Studio databases start with 'ai-studio-'.
+const isAiStudioProject = finalConfig.projectId && (
+  finalConfig.projectId.startsWith('gen-lang-client') || 
+  finalConfig.projectId.includes('ai-studio')
+);
+const isCustomStudioDb = finalConfig.firestoreDatabaseId && finalConfig.firestoreDatabaseId.startsWith('ai-studio-');
+
+if (finalConfig.projectId && !isAiStudioProject && isCustomStudioDb) {
+  console.log('[Firebase Initializer] Custom project detected with AI Studio Database ID. Overriding database ID to "(default)".');
+  finalConfig.firestoreDatabaseId = '';
+}
+
 // Log Firebase parameters for extreme transparent debugging (excluding credentials)
 console.log('[Firebase Initializer] Project ID:', finalConfig.projectId);
 console.log('[Firebase Initializer] Database ID:', finalConfig.firestoreDatabaseId || '(default)');
