@@ -100,4 +100,131 @@ git push -u origin main
 
 ---
 
+## 🌐 Deploying to Hostinger VPS (Prisma + MySQL + Node.js)
+
+To deploy Master Mart on your **Hostinger VPS** with a **MySQL** database, follow this comprehensive production guide:
+
+### 1. Prerequisites on your VPS
+Make sure your Hostinger VPS has **Node.js (v18+)**, **MySQL Server**, **Nginx**, and **Git** installed:
+```bash
+# Update package list & install tools
+sudo apt update
+sudo apt install -y git curl nginx mysql-server
+
+# Install Node.js v18 LTS
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt-get install -y nodejs
+```
+
+### 2. Configure MySQL Database
+Log into your MySQL server as root and create a database and user:
+```sql
+sudo mysql -u root
+
+-- Create master_mart database
+CREATE DATABASE master_mart;
+
+-- Create secure dedicated user
+CREATE USER 'mart_user'@'localhost' IDENTIFIED BY 'mart_secure_password_9134';
+GRANT ALL PRIVILEGES ON master_mart.* TO 'mart_user'@'localhost';
+FLUSH PRIVILEGES;
+EXIT;
+```
+
+### 3. Clone & Configure Environment Variables
+Clone your exported project repository on the VPS, navigate to it, and create your production `.env` file:
+```bash
+cd /var/www
+git clone <your-repo-link> master-mart
+cd master-mart
+
+# Install production dependencies
+npm install
+
+# Create .env file with MySQL Connection String & JWT / Cloudinary keys
+nano .env
+```
+Inside the `.env` file, populate these variables:
+```env
+PORT=3000
+NODE_ENV=production
+
+# MySQL Prisma connection string
+DATABASE_URL="mysql://mart_user:mart_secure_password_9134@localhost:3000/master_mart"
+
+# Admin Authentication Secret
+ADMIN_JWT_SECRET="mart-admin-jwt-token-9134-secret"
+JWT_SECRET="mart-session-secret"
+
+# Cloudinary Credentials (For dynamic image uploads)
+CLOUDINARY_CLOUD_NAME="your-cloudinary-cloud-name"
+CLOUDINARY_API_KEY="your-cloudinary-api-key"
+CLOUDINARY_API_SECRET="your-cloudinary-api-secret"
+
+# Payment gateway sandbox settings
+BKASH_APP_KEY="sandbox_app_key"
+BKASH_APP_SECRET="sandbox_app_secret"
+BKASH_USERNAME="sandbox_username"
+BKASH_PASSWORD="sandbox_password"
+
+SSLCOMMERZ_STORE_ID="sandbox_store_id"
+SSLCOMMERZ_STORE_PASSWORD="sandbox_store_password"
+SSLCOMMERZ_IS_SANDBOX="true"
+```
+
+### 4. Push Prisma Database Schema
+Generate Prisma Client and push your database tables instantly to MySQL:
+```bash
+# Generate typescript type-safe client
+npx prisma generate
+
+# Create tables instantly in MySQL
+npx prisma db push
+```
+
+### 5. Build and Start Node Express Server
+Build the optimized frontend assets and bundle the backend using PM2 to manage the node process persistently:
+```bash
+# Build frontend + server CJS bundle
+npm run build
+
+# Install PM2 globally
+sudo npm install -g pm2
+
+# Start the bundled app and save process to restart on VPS reboot
+pm2 start dist/server.cjs --name "master-mart"
+pm2 save
+pm2 startup
+```
+
+### 6. Set Up Nginx Reverse Proxy
+To make Master Mart accessible to the internet via your domain or public VPS IP address, configure Nginx as a reverse proxy:
+```bash
+sudo nano /etc/nginx/sites-available/master-mart
+```
+Paste this Nginx block:
+```nginx
+server {
+    listen 80;
+    server_name yourdomain.com www.yourdomain.com <YOUR_VPS_IP>;
+
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+```
+Enable the Nginx config and restart the web server:
+```bash
+sudo ln -s /etc/nginx/sites-available/master-mart /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl restart nginx
+```
+
+---
+
 *Crafted with precision for a smooth, reliable, and premium shopping experience.*

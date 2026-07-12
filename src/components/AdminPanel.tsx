@@ -999,6 +999,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       <Printer className="h-3.5 w-3.5" />
                       <span>{lang === 'en' ? 'Print Packet Bill & Label' : 'বিল ও লেবেল প্রিন্ট করুন'}</span>
                     </button>
+
+                    <a
+                      href={`/api/invoice/download/${selectedOrder.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-black uppercase transition-all cursor-pointer border border-sky-600 bg-sky-600 text-white hover:bg-sky-750 shadow-sm mt-2 transition-all hover:scale-102 active:scale-98 text-center no-underline"
+                    >
+                      <FileText className="h-3.5 w-3.5" />
+                      <span>{lang === 'en' ? 'Download Official Invoice' : 'অফিসিয়াল ইনভয়েস ডাউনলোড'}</span>
+                    </a>
                   </div>
                 </div>
               )}

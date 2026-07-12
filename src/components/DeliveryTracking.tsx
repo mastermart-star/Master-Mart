@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Bike, Phone, Clock, Navigation, CheckCircle2, ShieldAlert, Award, X } from 'lucide-react';
+import { Bike, Phone, Clock, Navigation, CheckCircle2, ShieldAlert, Award, X, FileText, ExternalLink } from 'lucide-react';
 import { Order } from '../types';
 
 interface DeliveryTrackingProps {
@@ -97,6 +97,18 @@ export const DeliveryTracking: React.FC<DeliveryTrackingProps> = ({
 
         {/* ETA Widget */}
         <div className="flex items-center gap-2">
+          {/* Printable Invoice Link */}
+          <a
+            href={`/api/invoice/download/${order.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 bg-sky-50 text-sky-700 border border-sky-150 dark:bg-sky-950/30 dark:text-sky-450 dark:border-sky-900/30 px-3.5 py-2 rounded-2xl text-xs font-black hover:bg-sky-100 transition-colors shadow-xs"
+            title={lang === 'en' ? 'Print Official Invoice' : 'অফিসিয়াল ইনভয়েস ডাউনলোড'}
+          >
+            <FileText className="h-4 w-4" />
+            <span>{lang === 'en' ? 'Invoice' : 'ইনভয়েস'}</span>
+          </a>
+
           <div className="flex items-center gap-3 bg-slate-50 px-4 py-2 rounded-2xl dark:bg-slate-950/60">
             <Clock className="h-4 w-4 text-emerald-500" />
             <div>
@@ -229,6 +241,30 @@ export const DeliveryTracking: React.FC<DeliveryTrackingProps> = ({
           </div>
         )}
       </div>
+
+      {/* COURIER DISPATCH INTEGRATION BANNER */}
+      {order.courierTrackingId && (
+        <div className="mt-5 p-4 rounded-2xl bg-sky-50/40 dark:bg-sky-950/20 border border-sky-100 dark:border-sky-900/30 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-xs">
+          <div className="text-left">
+            <span className="text-[9px] bg-sky-100 text-sky-850 dark:bg-sky-950 dark:text-sky-300 font-extrabold px-2.5 py-0.5 rounded-md uppercase tracking-wider">Steadfast Courier</span>
+            <h4 className="text-xs font-black text-slate-800 dark:text-zinc-200 mt-1.5">
+              {lang === 'en' ? 'Package Dispatched via Courier API' : 'কুরিয়ার সিস্টেমে পার্সেল পাঠানো হয়েছে'}
+            </h4>
+            <span className="text-[11px] text-slate-400 font-bold block mt-0.5">
+              Tracking ID: <strong className="font-mono text-slate-700 dark:text-zinc-300">{order.courierTrackingId}</strong>
+            </span>
+          </div>
+          <a
+            href={order.courierTrackingUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 bg-sky-600 hover:bg-sky-700 text-white px-4 py-2.5 rounded-xl text-xs font-black transition-all shadow-xs shrink-0 text-center justify-center cursor-pointer"
+          >
+            <span>{lang === 'en' ? 'Track Live' : 'লাইভ ট্র্যাক'}</span>
+            <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+        </div>
+      )}
 
       {/* RIDER & SPEED ACCELERATOR CONTROLLERS */}
       <div className="mt-5 rounded-2xl bg-slate-50 dark:bg-slate-950 p-4 border border-slate-100 dark:border-slate-850">

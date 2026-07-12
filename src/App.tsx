@@ -462,171 +462,60 @@ export default function App() {
     safeLocalStorage.setItem('master_mart_all_orders', JSON.stringify(allOrdersList));
   }, [allOrdersList]);
 
-  // Real-time stream products from Firestore
+  // Real-time synchronization of products and orders with the Dedicated Backend API
   useEffect(() => {
     let active = true;
 
-    // Register onSnapshot synchronously and immediately so it is non-blocking and responds instantly
-    const unsubProducts = onSnapshot(collection(db, 'products'), async (snapshot) => {
+    const fetchProductsAndOrders = async () => {
       if (!active) return;
-
-      const deletedIds = getDeletedProductIds();
-
-      // Retrieve locally saved products from localStorage to prevent loss of newly added products
-      let localProducts: Product[] = [];
       try {
-        const cached = safeLocalStorage.getItem('master_mart_products');
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed)) {
-            localProducts = parsed;
-          }
+        // Fetch Products
+        const prodRes = await fetch('/api/products');
+        if (prodRes.ok && active) {
+          const items = await prodRes.json();
+          setProductsList(items);
+          setFirebaseError(null);
+          setDbLoading(false);
         }
-      } catch (e) {
-        console.warn('Failed to parse cached products in onSnapshot:', e);
-      }
 
-      const dbItems: Product[] = [];
-      if (!snapshot.empty) {
-        snapshot.forEach((docSnap) => {
-          dbItems.push(docSnap.data() as Product);
-        });
-      }
+        // Fetch Orders
+        const ordRes = await fetch('/api/orders');
+        if (ordRes.ok && active) {
+          const items: Order[] = await ordRes.json();
+          items.sort((a, b) => b.id.localeCompare(a.id));
+          setAllOrdersList(items);
 
-      // Merge default products, local products, and db items
-      const productMap = new Map<string, Product>();
-      
-      // 1. Add default products that are not deleted
-      PRODUCTS.forEach(p => {
-        if (!deletedIds.includes(p.id)) {
-          productMap.set(p.id, p);
-        }
-      });
-
-      // 2. Add local storage products (including custom newly added products)
-      localProducts.forEach(p => {
-        if (!deletedIds.includes(p.id)) {
-          productMap.set(p.id, p);
-        }
-      });
-
-      // 3. Overwrite/add with db products from Firestore
-      dbItems.forEach(p => {
-        if (!deletedIds.includes(p.id)) {
-          productMap.set(p.id, p);
-        }
-      });
-
-      const mergedItems = Array.from(productMap.values());
-
-      // Sort newly added first (usually having p_db_ prefix)
-      mergedItems.sort((a, b) => {
-        const isA_Db = a.id.startsWith('p_db_');
-        const isB_Db = b.id.startsWith('p_db_');
-        if (isA_Db && !isB_Db) return -1;
-        if (!isA_Db && isB_Db) return 1;
-        return b.id.localeCompare(a.id);
-      });
-
-      if (active) {
-        setProductsList(mergedItems);
-        setFirebaseError(null);
-      }
-
-      if (active) {
-        setDbLoading(false);
-      }
-    }, (err) => {
-      console.error('Failed to stream products from Firestore:', err);
-      if (active) {
-        setFirebaseError(err instanceof Error ? err.message : String(err));
-        // Fallback to local storage backup or default products
-        const deletedIds = getDeletedProductIds();
-        const cached = safeLocalStorage.getItem('master_mart_products');
-        if (cached) {
+          // Extract current user's tracked order IDs from localStorage
+          const myOrderIdsString = safeLocalStorage.getItem('master_mart_my_order_ids') || '[]';
+          let myOrderIds: string[] = [];
           try {
-            const parsed = JSON.parse(cached);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              const filteredCached = parsed.filter(p => !deletedIds.includes(p.id));
-              setProductsList(filteredCached);
-              setDbLoading(false);
-              return;
-            }
-          } catch (e) {}
+            myOrderIds = JSON.parse(myOrderIdsString);
+          } catch (e) {
+            myOrderIds = [];
+          }
+
+          // Filter and sync live order updates for the customer
+          const mySyncedOrders = items.filter(o => myOrderIds.includes(o.id));
+          setOrders(mySyncedOrders);
         }
-        const availableDefault = PRODUCTS.filter(p => !deletedIds.includes(p.id));
-        setProductsList(availableDefault);
-        setDbLoading(false);
-        try {
-          handleFirestoreError(err, OperationType.LIST, 'products');
-        } catch (e) {
-          // Logged
-        }
+      } catch (err) {
+        console.warn('[Full-Stack Sync] API poll failed, using local fallback:', err);
       }
-    });
+    };
+
+    // Perform initial fetch
+    fetchProductsAndOrders();
+
+    // Poll every 4 seconds for full cross-browser relational database synchronisation
+    const interval = setInterval(fetchProductsAndOrders, 4000);
 
     return () => {
       active = false;
-      unsubProducts();
+      clearInterval(interval);
     };
   }, []);
 
-  // Real-time stream orders from Firestore (for both Admin and Customer tracking)
-  useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'orders'), (snapshot) => {
-      const items: Order[] = [];
-      snapshot.forEach((docSnap) => {
-        items.push(docSnap.data() as Order);
-      });
-      // Sort newly placed first
-      items.sort((a, b) => b.id.localeCompare(a.id));
-      setAllOrdersList(items);
-
-      // Extract current user's tracked order IDs from localStorage
-      const myOrderIdsString = safeLocalStorage.getItem('master_mart_my_order_ids') || '[]';
-      let myOrderIds: string[] = [];
-      try {
-        myOrderIds = JSON.parse(myOrderIdsString);
-      } catch (e) {
-        myOrderIds = [];
-      }
-
-      // Filter and sync live order updates for the customer
-      const mySyncedOrders = items.filter(o => myOrderIds.includes(o.id));
-      setOrders(mySyncedOrders);
-    }, (err) => {
-      console.error('Failed to stream orders:', err);
-      // Fallback to local storage backup
-      try {
-        const cached = safeLocalStorage.getItem('master_mart_all_orders');
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setAllOrdersList(parsed);
-            
-            const myOrderIdsString = safeLocalStorage.getItem('master_mart_my_order_ids') || '[]';
-            let myOrderIds: string[] = [];
-            try {
-              myOrderIds = JSON.parse(myOrderIdsString);
-            } catch (e) {}
-            const mySyncedOrders = parsed.filter(o => myOrderIds.includes(o.id));
-            setOrders(mySyncedOrders);
-          }
-        }
-      } catch (fallbackErr) {
-        console.warn('Order streaming fallback to LocalStorage failed:', fallbackErr);
-      }
-      try {
-        handleFirestoreError(err, OperationType.LIST, 'orders');
-      } catch (e) {
-        // Log custom error structure
-      }
-    });
-
-    return () => unsub();
-  }, []);
-
-  // Save new product to Firestore
+  // Save new product to Dedicated Backend
   const handleAddProductToDb = async (newProduct: Product) => {
     // Instantly update local state and localStorage so it persists across reloads immediately
     setProductsList((prev) => {
@@ -637,20 +526,23 @@ export default function App() {
     });
 
     try {
-      console.log('Attempting to add product to Firestore:', newProduct.id);
-      const docRef = doc(db, 'products', newProduct.id);
-      await setDoc(docRef, cleanUndefined(newProduct));
-      console.log('Successfully saved product to Firestore!');
+      console.log('Attempting to save product to backend:', newProduct.id);
+      const res = await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cleanUndefined(newProduct))
+      });
+      if (!res.ok) throw new Error('API product save failed');
+      console.log('Successfully saved product to dedicated backend database!');
       setFirebaseError(null);
       triggerNotification(lang === 'en' ? 'Product successfully saved!' : 'পণ্যটি সফলভাবে সংরক্ষিত হয়েছে!');
     } catch (err: any) {
-      console.warn('Firestore write failed, using local storage backup:', err);
-      setFirebaseError(err instanceof Error ? err.message : String(err));
+      console.warn('Backend write failed, using local backup:', err);
       triggerNotification(lang === 'en' ? 'Product saved locally!' : 'পণ্যটি লোকাল ডাটাবেসে সংরক্ষিত হয়েছে!');
     }
   };
 
-  // Restore all original default products to Firestore
+  // Restore all original default products to Dedicated Backend
   const handleRestoreDefaultProducts = async () => {
     try {
       safeLocalStorage.removeItem('master_mart_deleted_product_ids');
@@ -660,24 +552,22 @@ export default function App() {
     safeLocalStorage.setItem('master_mart_products', JSON.stringify(PRODUCTS));
 
     try {
-      console.log('Restoring default products to Firestore...');
+      console.log('Restoring default products to backend...');
       const promises = PRODUCTS.map(async (prod) => {
-        const docRef = doc(db, 'products', prod.id);
-        await setDoc(docRef, prod);
+        return fetch('/api/products', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(prod)
+        });
       });
       await Promise.all(promises);
       triggerNotification(lang === 'en' ? 'All default products successfully restored!' : 'সকল ডিফল্ট পণ্য সফলভাবে পুনরুদ্ধার করা হয়েছে!');
     } catch (err) {
-      console.error('Failed to restore default products:', err);
-      try {
-        handleFirestoreError(err, OperationType.WRITE, 'products');
-      } catch (wrappedErr: any) {
-        throw new Error(wrappedErr.message || String(err));
-      }
+      console.error('Failed to restore default products to backend:', err);
     }
   };
 
-  // Delete product from Firestore
+  // Delete product from Dedicated Backend
   const handleDeleteProductFromDb = async (product: Product) => {
     // Record as deleted so default products do not reappear if database is out of sync or empty
     try {
@@ -698,16 +588,18 @@ export default function App() {
     });
 
     try {
-      const docRef = doc(db, 'products', product.id);
-      await deleteDoc(docRef);
+      const res = await fetch(`/api/products/${product.id}`, {
+        method: 'DELETE'
+      });
+      if (!res.ok) throw new Error('API delete failed');
       triggerNotification(lang === 'en' ? 'Product deleted!' : 'পণ্যটি ডাটাবেস থেকে মুছে ফেলা হয়েছে!');
     } catch (err) {
-      console.warn('Firestore delete failed, using local storage update:', err);
+      console.warn('Backend delete failed, using local storage update:', err);
       triggerNotification(lang === 'en' ? 'Product deleted locally!' : 'পণ্যটি মুছে ফেলা হয়েছে!');
     }
   };
 
-  // Update order status in Firestore (Admin tool)
+  // Update order status in Dedicated Backend (Admin tool)
   const handleUpdateOrderStatusDb = async (orderId: string, newStatus: OrderStatus, progress: number, extra?: Partial<Order>) => {
     // Instantly update allOrdersList state and localStorage
     setAllOrdersList((prev) => {
@@ -717,25 +609,24 @@ export default function App() {
     });
 
     try {
-      const docRef = doc(db, 'orders', orderId);
-      await setDoc(docRef, {
-        status: newStatus,
-        stepProgress: progress,
-        ...extra
-      }, { merge: true });
+      const res = await fetch(`/api/orders/${orderId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: newStatus,
+          stepProgress: progress,
+          ...extra
+        })
+      });
+      if (!res.ok) throw new Error('API order update failed');
       triggerNotification(lang === 'en' ? 'Order status successfully updated!' : 'অর্ডারের স্ট্যাটাস সফলভাবে আপডেট হয়েছে!');
     } catch (err) {
-      console.error('Failed to update order status:', err);
+      console.error('Failed to update order status via backend API:', err);
       triggerNotification(lang === 'en' ? 'Failed to update order.' : 'অর্ডার আপডেট করতে ব্যর্থ হয়েছে।');
-      try {
-        handleFirestoreError(err, OperationType.UPDATE, `orders/${orderId}`);
-      } catch (wrappedErr) {
-        // Logged
-      }
     }
   };
 
-  // Update product price or stock in Firestore (Admin tool)
+  // Update product price or stock in Dedicated Backend (Admin tool)
   const handleUpdateProductInDb = async (updatedProduct: Product) => {
     // Instantly update local state and localStorage so it is responsive and persists immediately
     setProductsList((prev) => {
@@ -745,11 +636,15 @@ export default function App() {
     });
 
     try {
-      const docRef = doc(db, 'products', updatedProduct.id);
-      await setDoc(docRef, cleanUndefined(updatedProduct));
+      const res = await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cleanUndefined(updatedProduct))
+      });
+      if (!res.ok) throw new Error('API update failed');
       triggerNotification(lang === 'en' ? 'Product inventory updated!' : 'পণ্য বিবরণী সফলভাবে আপডেট করা হয়েছে!');
     } catch (err) {
-      console.warn('Firestore update failed, using local storage update:', err);
+      console.warn('Backend product update failed, using local storage fallback:', err);
       triggerNotification(lang === 'en' ? 'Product updated locally!' : 'পণ্য বিবরণী সফলভাবে আপডেট করা হয়েছে!');
     }
   };
@@ -983,35 +878,18 @@ export default function App() {
     setIsCartOpen(false);
     triggerNotification(lang === 'en' ? 'Order processed! Starting instant tracking...' : 'অর্ডার সফল হয়েছে! ১০ মিনিটে ডেলিভারি ট্র্যাকিং চালু হয়েছে।');
 
-    // 2. Process Firestore persistence asynchronously in the background
+    // 2. Process Dedicated Backend persistence asynchronously in the background
     (async () => {
       try {
-        const docRef = doc(db, 'orders', completedOrder.id);
-        await setDoc(docRef, cleanUndefined(completedOrder));
-
-        // Update product stock in Firestore
-        for (const item of completedOrder.items) {
-          try {
-            const productRef = doc(db, 'products', item.product.id);
-            const productSnap = await getDoc(productRef);
-            let currentStock = item.product.stock;
-            if (productSnap.exists()) {
-              const prodData = productSnap.data();
-              if (prodData && typeof prodData.stock === 'number') {
-                currentStock = prodData.stock;
-              }
-            }
-            const newStock = Math.max(0, currentStock - item.quantity);
-            await updateDoc(productRef, {
-              stock: newStock
-            });
-            console.log(`Successfully updated stock for ${item.product.id}: ${currentStock} -> ${newStock}`);
-          } catch (stockErr) {
-            console.error(`Failed to update stock for product ${item.product.id}:`, stockErr);
-          }
-        }
+        const res = await fetch('/api/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(cleanUndefined(completedOrder))
+        });
+        if (!res.ok) throw new Error('API save order failed');
+        console.log('Successfully saved order to dedicated backend database and decremented stock!');
       } catch (err) {
-        console.error('Failed to save order to Firestore:', err);
+        console.error('Failed to save order to dedicated backend API:', err);
       }
     })();
   };

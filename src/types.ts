@@ -50,6 +50,8 @@ export interface Order {
   customerPhone?: string;
   customerAddress?: string;
   customerEmail?: string;
+  courierTrackingId?: string;
+  courierTrackingUrl?: string;
 }
 
 export interface ProductReview {

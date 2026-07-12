@@ -200,6 +200,26 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
     setErrorMsg('');
     setSuccessMsg('');
 
+    let finalImageUrl = image.trim();
+    if (image.startsWith('data:image')) {
+      try {
+        const uploadRes = await fetch('/api/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image: image.trim() })
+        });
+        if (uploadRes.ok) {
+          const uploadData = await uploadRes.json();
+          if (uploadData.success && uploadData.url) {
+            finalImageUrl = uploadData.url;
+            console.log('[Cloudinary Success] Image URL:', finalImageUrl);
+          }
+        }
+      } catch (uploadErr) {
+        console.warn('Cloudinary upload failed, using direct string:', uploadErr);
+      }
+    }
+
     const newProd: Product = {
       id: `p_db_${Date.now()}`,
       nameEn: nameEn.trim(),
@@ -210,7 +230,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
       unitEn: unitEn.trim() || '1 kg',
       unitBn: unitBn.trim() || '১ কেজি',
       rating: 5.0, // New products start with perfect 5.0 rating
-      image: image.trim(),
+      image: finalImageUrl,
       stock: Number(stock) || 10,
       isVeg: dietaryType === 'none' ? undefined : (dietaryType === 'veg'),
       descriptionEn: descriptionEn.trim() || undefined,
