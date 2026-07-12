@@ -19,13 +19,13 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === '1234' || password === 'admin') {
+    if (password === '9134' || password === 'admin') {
       onLoginSuccess();
     } else {
       setError(
         lang === 'en' 
-          ? 'Incorrect Password! Use default: 1234' 
-          : 'ভুল পাসওয়ার্ড! সঠিক পাসওয়ার্ড দিন (ডিফল্ট: 1234)'
+          ? 'Incorrect Password!' 
+          : 'ভুল পাসওয়ার্ড! সঠিক পাসওয়ার্ড দিন'
       );
     }
   };
