@@ -4,7 +4,7 @@ import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
-import { PrismaClient } from '@prisma/client';
+import { Pool } from 'pg';
 import jwt from 'jsonwebtoken';
 import { v2 as cloudinary } from 'cloudinary';
 
@@ -21,17 +21,22 @@ const PORT = 3000;
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Database Integration: Prisma client fallback to JSON if DATABASE_URL not set or connection fails
-const prisma = new PrismaClient();
-let usePrisma = false;
+// Database Integration: PostgreSQL (via `pg`) with automatic fallback to JSON
+// if DATABASE_URL isn't set or the connection fails. The table shapes are
+// defined in prisma/schema.prisma (kept as the schema source of truth /
+// for `prisma db push`), but runtime queries use the lightweight `pg`
+// driver directly — no native engine binary required.
+let pool: Pool | null = null;
+let usePostgres = false;
 
 if (process.env.DATABASE_URL) {
   try {
-    usePrisma = true;
-    console.log('[Database] DATABASE_URL detected. Primary database is configured with Prisma + MySQL.');
+    pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    usePostgres = true;
+    console.log('[Database] DATABASE_URL detected. Primary database is configured with PostgreSQL.');
   } catch (err) {
-    console.error('[Database] Failed to pre-load Prisma Client:', err);
-    usePrisma = false;
+    console.error('[Database] Failed to initialize PostgreSQL pool:', err);
+    usePostgres = false;
   }
 } else {
   console.log('[Database] DATABASE_URL not set. Falling back to robust Local File Database (database.json) for automatic persistence.');
@@ -72,40 +77,53 @@ function writeLocalDb(data: LocalDbSchema) {
   }
 }
 
-// Ensure database tables exist and seed default products if empty (for Prisma Mode)
-async function initializePrismaDatabase() {
-  if (!usePrisma) return;
+// Ensure database tables exist (matches prisma/schema.prisma 1:1) and seed
+// default products if empty. Runs the same DDL as prisma/schema.sql, so this
+// works whether or not `npx prisma db push` has ever been run.
+async function initializePostgresDatabase() {
+  if (!usePostgres || !pool) return;
   try {
-    console.log('[Database] Checking Prisma table seeds...');
-    const count = await prisma.product.count();
-    if (count === 0) {
-      console.log('[Database] Seeding MySQL with default products catalog via Prisma...');
+    console.log('[Database] Ensuring PostgreSQL tables exist...');
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS products (
+        id TEXT PRIMARY KEY, name_en TEXT NOT NULL, name_bn TEXT NOT NULL, category TEXT NOT NULL,
+        price DECIMAL(10,2) NOT NULL, unit_en TEXT NOT NULL, unit_bn TEXT NOT NULL,
+        rating DECIMAL(3,2) NOT NULL DEFAULT 4.5, image TEXT NOT NULL, discount_price DECIMAL(10,2),
+        stock INTEGER NOT NULL, is_veg BOOLEAN NOT NULL DEFAULT FALSE,
+        description_en TEXT, description_bn TEXT
+      );
+      CREATE TABLE IF NOT EXISTS orders (
+        id TEXT PRIMARY KEY, items TEXT NOT NULL, subtotal DECIMAL(10,2) NOT NULL,
+        delivery_fee DECIMAL(10,2) NOT NULL, total DECIMAL(10,2) NOT NULL, status TEXT NOT NULL,
+        payment_method TEXT NOT NULL, payment_status TEXT NOT NULL, timestamp TEXT NOT NULL,
+        eta_minutes INTEGER NOT NULL, driver_name TEXT, driver_phone TEXT, driver_photo TEXT,
+        step_progress INTEGER NOT NULL DEFAULT 0, customer_name TEXT, customer_phone TEXT,
+        customer_address TEXT, customer_email TEXT, courier_tracking_id TEXT, courier_tracking_url TEXT
+      );
+      CREATE TABLE IF NOT EXISTS reviews (
+        id TEXT PRIMARY KEY, product_id TEXT NOT NULL, user_name TEXT NOT NULL,
+        rating DECIMAL(3,2) NOT NULL, comment TEXT NOT NULL, date TEXT NOT NULL
+      );
+    `);
+
+    const { rows } = await pool.query('SELECT COUNT(*)::int AS count FROM products');
+    if (rows[0].count === 0) {
+      console.log('[Database] Seeding PostgreSQL with default products catalog...');
       for (const p of PRODUCTS) {
-        await prisma.product.create({
-          data: {
-            id: p.id,
-            nameEn: p.nameEn,
-            nameBn: p.nameBn,
-            category: p.category,
-            price: p.price,
-            unitEn: p.unitEn,
-            unitBn: p.unitBn,
-            rating: p.rating || 4.5,
-            image: p.image,
-            discountPrice: p.discountPrice || null,
-            stock: p.stock,
-            isVeg: p.isVeg || false,
-            descriptionEn: p.descriptionEn || '',
-            descriptionBn: p.descriptionBn || ''
-          }
-        });
+        await pool.query(
+          `INSERT INTO products (id, name_en, name_bn, category, price, unit_en, unit_bn, rating, image, discount_price, stock, is_veg, description_en, description_bn)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+           ON CONFLICT (id) DO NOTHING`,
+          [p.id, p.nameEn, p.nameBn, p.category, p.price, p.unitEn, p.unitBn, p.rating || 4.5,
+           p.image, p.discountPrice || null, p.stock, p.isVeg || false, p.descriptionEn || '', p.descriptionBn || '']
+        );
       }
-      console.log('[Database] Prisma database seeding completed successfully!');
+      console.log('[Database] PostgreSQL database seeding completed successfully!');
     }
   } catch (err) {
-    console.warn('[Database] Prisma dynamic table check failed. Please ensure migrations are applied using npx prisma db push:', err);
-    // Graceful fallback to file mode if tables aren't pushed yet
-    usePrisma = false;
+    console.warn('[Database] PostgreSQL initialization failed. Falling back to local JSON file mode:', err);
+    // Graceful fallback to file mode if the database is unreachable
+    usePostgres = false;
   }
 }
 
@@ -127,74 +145,56 @@ function authenticateJWT(req: express.Request, res: express.Response, next: expr
   }
 }
 
-// Safe CRUD Helpers that work for BOTH Prisma and JSON Database modes
+// Safe CRUD Helpers that work for BOTH PostgreSQL and JSON Database modes
+function rowToProduct(row: any) {
+  return {
+    id: row.id,
+    nameEn: row.name_en,
+    nameBn: row.name_bn,
+    category: row.category,
+    price: Number(row.price),
+    unitEn: row.unit_en,
+    unitBn: row.unit_bn,
+    rating: Number(row.rating),
+    image: row.image,
+    discountPrice: row.discount_price !== null ? Number(row.discount_price) : undefined,
+    stock: row.stock,
+    isVeg: row.is_veg,
+    descriptionEn: row.description_en || undefined,
+    descriptionBn: row.description_bn || undefined
+  };
+}
+
 async function fetchAllProducts() {
-  if (usePrisma) {
+  if (usePostgres && pool) {
     try {
-      const items = await prisma.product.findMany();
-      return items.map(p => ({
-        id: p.id,
-        nameEn: p.nameEn,
-        nameBn: p.nameBn,
-        category: p.category,
-        price: Number(p.price),
-        unitEn: p.unitEn,
-        unitBn: p.unitBn,
-        rating: Number(p.rating),
-        image: p.image,
-        discountPrice: p.discountPrice ? Number(p.discountPrice) : undefined,
-        stock: p.stock,
-        isVeg: p.isVeg,
-        descriptionEn: p.descriptionEn || undefined,
-        descriptionBn: p.descriptionBn || undefined
-      }));
+      const { rows } = await pool.query('SELECT * FROM products ORDER BY id');
+      return rows.map(rowToProduct);
     } catch (err) {
-      console.error('[Database] Prisma products query failed, using JSON fallback:', err);
+      console.error('[Database] PostgreSQL products query failed, using JSON fallback:', err);
     }
   }
   return getLocalDb().products;
 }
 
 async function insertProduct(p: any) {
-  if (usePrisma) {
+  if (usePostgres && pool) {
     try {
-      await prisma.product.upsert({
-        where: { id: p.id },
-        update: {
-          nameEn: p.nameEn,
-          nameBn: p.nameBn,
-          category: p.category,
-          price: p.price,
-          unitEn: p.unitEn,
-          unitBn: p.unitBn,
-          rating: p.rating || 4.5,
-          image: p.image,
-          discountPrice: p.discountPrice || null,
-          stock: p.stock,
-          isVeg: p.isVeg || false,
-          descriptionEn: p.descriptionEn || '',
-          descriptionBn: p.descriptionBn || ''
-        },
-        create: {
-          id: p.id,
-          nameEn: p.nameEn,
-          nameBn: p.nameBn,
-          category: p.category,
-          price: p.price,
-          unitEn: p.unitEn,
-          unitBn: p.unitBn,
-          rating: p.rating || 4.5,
-          image: p.image,
-          discountPrice: p.discountPrice || null,
-          stock: p.stock,
-          isVeg: p.isVeg || false,
-          descriptionEn: p.descriptionEn || '',
-          descriptionBn: p.descriptionBn || ''
-        }
-      });
+      await pool.query(
+        `INSERT INTO products (id, name_en, name_bn, category, price, unit_en, unit_bn, rating, image, discount_price, stock, is_veg, description_en, description_bn)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+         ON CONFLICT (id) DO UPDATE SET
+           name_en = EXCLUDED.name_en, name_bn = EXCLUDED.name_bn, category = EXCLUDED.category,
+           price = EXCLUDED.price, unit_en = EXCLUDED.unit_en, unit_bn = EXCLUDED.unit_bn,
+           rating = EXCLUDED.rating, image = EXCLUDED.image, discount_price = EXCLUDED.discount_price,
+           stock = EXCLUDED.stock, is_veg = EXCLUDED.is_veg,
+           description_en = EXCLUDED.description_en, description_bn = EXCLUDED.description_bn`,
+        [p.id, p.nameEn, p.nameBn, p.category, p.price, p.unitEn, p.unitBn, p.rating || 4.5,
+         p.image, p.discountPrice || null, p.stock, p.isVeg || false, p.descriptionEn || '', p.descriptionBn || '']
+      );
       return;
     } catch (err) {
-      console.error('[Database] Prisma insert product failed, using local JSON:', err);
+      console.error('[Database] PostgreSQL insert product failed, using local JSON:', err);
     }
   }
   const db = getLocalDb();
@@ -208,12 +208,12 @@ async function insertProduct(p: any) {
 }
 
 async function removeProduct(id: string) {
-  if (usePrisma) {
+  if (usePostgres && pool) {
     try {
-      await prisma.product.delete({ where: { id } });
+      await pool.query('DELETE FROM products WHERE id = $1', [id]);
       return;
     } catch (err) {
-      console.error('[Database] Prisma delete product failed, using local JSON:', err);
+      console.error('[Database] PostgreSQL delete product failed, using local JSON:', err);
     }
   }
   const db = getLocalDb();
@@ -221,81 +221,63 @@ async function removeProduct(id: string) {
   writeLocalDb(db);
 }
 
+function rowToOrder(row: any) {
+  return {
+    id: row.id,
+    items: JSON.parse(row.items),
+    subtotal: Number(row.subtotal),
+    deliveryFee: Number(row.delivery_fee),
+    total: Number(row.total),
+    status: row.status,
+    paymentMethod: row.payment_method,
+    paymentStatus: row.payment_status,
+    timestamp: row.timestamp,
+    etaMinutes: row.eta_minutes,
+    driverName: row.driver_name || undefined,
+    driverPhone: row.driver_phone || undefined,
+    driverPhoto: row.driver_photo || undefined,
+    stepProgress: row.step_progress,
+    customerName: row.customer_name || undefined,
+    customerPhone: row.customer_phone || undefined,
+    customerAddress: row.customer_address || undefined,
+    customerEmail: row.customer_email || undefined,
+    courierTrackingId: row.courier_tracking_id || undefined,
+    courierTrackingUrl: row.courier_tracking_url || undefined
+  };
+}
+
 async function fetchAllOrders() {
-  if (usePrisma) {
+  if (usePostgres && pool) {
     try {
-      const items = await prisma.order.findMany();
-      return items.map(o => ({
-        id: o.id,
-        items: JSON.parse(o.items),
-        subtotal: Number(o.subtotal),
-        deliveryFee: Number(o.deliveryFee),
-        total: Number(o.total),
-        status: o.status,
-        paymentMethod: o.paymentMethod,
-        paymentStatus: o.paymentStatus,
-        timestamp: o.timestamp,
-        etaMinutes: o.etaMinutes,
-        driverName: o.driverName || undefined,
-        driverPhone: o.driverPhone || undefined,
-        driverPhoto: o.driverPhoto || undefined,
-        stepProgress: o.stepProgress,
-        customerName: o.customerName || undefined,
-        customerPhone: o.customerPhone || undefined,
-        customerAddress: o.customerAddress || undefined,
-        customerEmail: o.customerEmail || undefined,
-        courierTrackingId: o.courierTrackingId || undefined,
-        courierTrackingUrl: o.courierTrackingUrl || undefined
-      }));
+      const { rows } = await pool.query('SELECT * FROM orders ORDER BY timestamp DESC');
+      return rows.map(rowToOrder);
     } catch (err) {
-      console.error('[Database] Prisma orders query failed, using local JSON:', err);
+      console.error('[Database] PostgreSQL orders query failed, using local JSON:', err);
     }
   }
   return getLocalDb().orders;
 }
 
 async function insertOrder(o: any) {
-  if (usePrisma) {
+  if (usePostgres && pool) {
     try {
-      await prisma.order.upsert({
-        where: { id: o.id },
-        update: {
-          status: o.status,
-          paymentStatus: o.paymentStatus,
-          stepProgress: o.stepProgress,
-          driverName: o.driverName || null,
-          driverPhone: o.driverPhone || null,
-          driverPhoto: o.driverPhoto || null,
-          etaMinutes: o.etaMinutes,
-          courierTrackingId: o.courierTrackingId || null,
-          courierTrackingUrl: o.courierTrackingUrl || null
-        },
-        create: {
-          id: o.id,
-          items: JSON.stringify(o.items),
-          subtotal: o.subtotal,
-          deliveryFee: o.deliveryFee,
-          total: o.total,
-          status: o.status,
-          paymentMethod: o.paymentMethod,
-          paymentStatus: o.paymentStatus,
-          timestamp: o.timestamp,
-          etaMinutes: o.etaMinutes,
-          driverName: o.driverName || null,
-          driverPhone: o.driverPhone || null,
-          driverPhoto: o.driverPhoto || null,
-          stepProgress: o.stepProgress,
-          customerName: o.customerName || null,
-          customerPhone: o.customerPhone || null,
-          customerAddress: o.customerAddress || null,
-          customerEmail: o.customerEmail || null,
-          courierTrackingId: o.courierTrackingId || null,
-          courierTrackingUrl: o.courierTrackingUrl || null
-        }
-      });
+      await pool.query(
+        `INSERT INTO orders (id, items, subtotal, delivery_fee, total, status, payment_method, payment_status, timestamp, eta_minutes, driver_name, driver_phone, driver_photo, step_progress, customer_name, customer_phone, customer_address, customer_email, courier_tracking_id, courier_tracking_url)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+         ON CONFLICT (id) DO UPDATE SET
+           status = EXCLUDED.status, payment_status = EXCLUDED.payment_status,
+           step_progress = EXCLUDED.step_progress, driver_name = EXCLUDED.driver_name,
+           driver_phone = EXCLUDED.driver_phone, driver_photo = EXCLUDED.driver_photo,
+           eta_minutes = EXCLUDED.eta_minutes, courier_tracking_id = EXCLUDED.courier_tracking_id,
+           courier_tracking_url = EXCLUDED.courier_tracking_url`,
+        [o.id, JSON.stringify(o.items), o.subtotal, o.deliveryFee, o.total, o.status, o.paymentMethod,
+         o.paymentStatus, o.timestamp, o.etaMinutes, o.driverName || null, o.driverPhone || null,
+         o.driverPhoto || null, o.stepProgress, o.customerName || null, o.customerPhone || null,
+         o.customerAddress || null, o.customerEmail || null, o.courierTrackingId || null, o.courierTrackingUrl || null]
+      );
       return;
     } catch (err) {
-      console.error('[Database] Prisma insert/update order failed, using local JSON:', err);
+      console.error('[Database] PostgreSQL insert/update order failed, using local JSON:', err);
     }
   }
   const db = getLocalDb();
@@ -794,7 +776,7 @@ app.post('/api/payment/sslcommerz/init', (req, res) => {
 
 async function startServer() {
   // Initialize Prisma Database and seed if needed
-  await initializePrismaDatabase();
+  await initializePostgresDatabase();
 
   if (process.env.NODE_ENV !== 'production') {
     // Development Mode: Mount Vite's HMR and middleware directly on Express
