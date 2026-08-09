@@ -184,62 +184,72 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         ? 'Pathao Courier' 
         : 'Steadfast Courier';
 
+    const slipMaxWidth = printPaperSize === 'pos57' ? '54mm' : printPaperSize === 'pos80' ? '76mm' : '95mm';
+    const pageSizeRule = printPaperSize === 'pos57' 
+      ? 'size: 57mm auto; margin: 1mm;' 
+      : printPaperSize === 'pos80' 
+        ? 'size: 80mm auto; margin: 1.5mm;' 
+        : 'size: A6 portrait; margin: 2mm 3mm;';
+
+    const fontSizeBody = printPaperSize === 'pos57' ? '7px' : printPaperSize === 'pos80' ? '7.5px' : '8px';
+    const fontSizeTitle = printPaperSize === 'pos57' ? '9.5px' : printPaperSize === 'pos80' ? '11px' : '11px';
+
     const itemsRows = selectedOrder.items.map((item, index) => {
       const itemPrice = item.product.discountPrice || item.product.price;
       const lineTotal = itemPrice * item.quantity;
       return `
         <tr style="border-bottom: 1px dashed #eee; color: #000;">
-          <td style="padding: 1.5px 0; font-size: 7.5px; text-align: left; line-height: 1.15;">
+          <td style="padding: 1.5px 0; font-size: ${fontSizeBody}; text-align: left; line-height: 1.15;">
             [ ] ${index + 1}. ${lang === 'en' ? item.product.nameEn : item.product.nameBn}
-            <span style="font-size: 6.5px; color: #555; display: inline-block; margin-left: 4px;">(${itemPrice} TK)</span>
+            <span style="font-size: 6px; color: #555; display: inline-block; margin-left: 2px;">(${itemPrice} TK)</span>
           </td>
-          <td style="padding: 1.5px 0; font-size: 7.5px; text-align: center; vertical-align: top;">${item.quantity}</td>
-          <td style="padding: 1.5px 0; font-size: 7.5px; text-align: right; vertical-align: top;">${lineTotal} TK</td>
+          <td style="padding: 1.5px 0; font-size: ${fontSizeBody}; text-align: center; vertical-align: top;">${item.quantity}</td>
+          <td style="padding: 1.5px 0; font-size: ${fontSizeBody}; text-align: right; vertical-align: top;">${lineTotal} TK</td>
         </tr>
       `;
     }).join('');
 
     const getSlipHtml = (copyLabelEn: string, copyLabelBn: string) => `
-      <div style="width: 100%; max-width: 95mm; margin: 0 auto; border: 1px solid #000; padding: 5px; box-sizing: border-box; background: #fff; page-break-inside: avoid; font-family: 'Courier New', Courier, monospace, 'Inter', sans-serif; color: #000; text-align: left; line-height: 1.15;">
-        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #000; padding-bottom: 3px; margin-bottom: 4px;">
+      <div style="width: 100%; max-width: ${slipMaxWidth}; margin: 0 auto; border: 1px solid #000; padding: ${printPaperSize === 'pos57' ? '3px 4px' : '5px'}; box-sizing: border-box; background: #fff; page-break-inside: avoid; font-family: 'Courier New', Courier, monospace, 'Inter', sans-serif; color: #000; text-align: left; line-height: 1.15;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #000; padding-bottom: 3px; margin-bottom: 3px;">
           <div>
-            <h1 style="font-size: 11px; font-weight: 950; text-transform: uppercase; margin: 0; font-family: sans-serif; color: #000;">${lang === 'en' ? 'Master Mart' : 'মাস্টার মার্ট'}</h1>
-            <div style="font-size: 7.5px; color: #000; margin-top: 1px;">
-              <b>Date:</b> ${selectedOrder.timestamp.split(' ')[0]} | <b>ID:</b> ${selectedOrder.id}
+            <h1 style="font-size: ${fontSizeTitle}; font-weight: 950; text-transform: uppercase; margin: 0; font-family: sans-serif; color: #000;">${lang === 'en' ? 'Master Mart' : 'মাস্টার মার্ট'}</h1>
+            <div style="font-size: ${fontSizeBody}; color: #000; margin-top: 1px;">
+              <b>Date:</b> ${selectedOrder.timestamp.split(' ')[0]} | <b>ID:</b> #${selectedOrder.id}
             </div>
           </div>
           <div style="text-align: right;">
-            <div style="font-size: 7.5px; background: #000; color: #fff; padding: 1px 3px; font-weight: bold; text-transform: uppercase; border-radius: 1px; display: inline-block; margin-bottom: 2px;">
+            <div style="font-size: ${fontSizeBody}; background: #000; color: #fff; padding: 1px 3px; font-weight: bold; text-transform: uppercase; border-radius: 1px; display: inline-block; margin-bottom: 2px;">
               ${lang === 'en' ? 'INVOICE' : 'চালান'}
             </div>
             <br/>
-            <div style="font-size: 7.5px; font-weight: bold; text-transform: uppercase; border: 1px solid #000; padding: 1px 3px; display: inline-block; background: #eee; color: #000; border-radius: 1px;">
+            <div style="font-size: 6.5px; font-weight: bold; text-transform: uppercase; border: 1px solid #000; padding: 1px 2px; display: inline-block; background: #eee; color: #000; border-radius: 1px;">
               ${lang === 'en' ? copyLabelEn : copyLabelBn}
             </div>
           </div>
         </div>
 
-        <div style="display: flex; justify-content: space-between; font-size: 7.5px; margin-bottom: 4px; border-bottom: 1px dashed #ccc; padding-bottom: 3px; color: #000;">
+        <div style="display: flex; justify-content: space-between; font-size: ${fontSizeBody}; margin-bottom: 3px; border-bottom: 1px dashed #ccc; padding-bottom: 2px; color: #000;">
           <div><b>Courier:</b> ${courierText}</div>
           <div><b>Payment:</b> ${selectedOrder.paymentMethod === 'bkash' ? 'bKash (Paid)' : 'COD'}</div>
         </div>
 
-        <div style="border: 1px solid #000; padding: 3px 5px; margin-bottom: 4px; background: #fdfdfd; border-radius: 1px; font-size: 7.5px; color: #000;">
-          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed #eee; padding-bottom: 1.5px; margin-bottom: 2.5px;">
+        <div style="border: 1px solid #000; padding: 3px 4px; margin-bottom: 3px; background: #fdfdfd; border-radius: 1px; font-size: ${fontSizeBody}; color: #000;">
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed #eee; padding-bottom: 1.5px; margin-bottom: 2px;">
             <span>👤 <b>${selectedOrder.customerName || (lang === 'en' ? 'Guest' : 'অতিথি')}</b></span>
-            <span style="font-size: 8px; font-weight: bold; background: #f0f0f0; border: 1px dashed #000; padding: 0.5px 3px; border-radius: 1px;">📞 ${selectedOrder.customerPhone}</span>
+            <span style="font-size: ${fontSizeBody}; font-weight: bold; background: #f0f0f0; border: 1px dashed #000; padding: 0.5px 2px; border-radius: 1px;">📞 ${selectedOrder.customerPhone}</span>
           </div>
           <div style="word-break: break-word; line-height: 1.15;">
             📍 <b>Address:</b> ${selectedOrder.customerAddress}
           </div>
         </div>
 
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 4px; color: #000; font-size: 7.5px;">
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 3px; color: #000; font-size: ${fontSizeBody};">
           <thead>
             <tr style="border-bottom: 1px solid #000; text-transform: uppercase; font-weight: bold;">
               <th style="text-align: left; padding: 1.5px 0;">Item</th>
-              <th style="text-align: center; width: 25px; padding: 1.5px 0;">Qty</th>
-              <th style="text-align: right; width: 55px; padding: 1.5px 0;">Total</th>
+              <th style="text-align: center; width: 22px; padding: 1.5px 0;">Qty</th>
+              <th style="text-align: right; width: 48px; padding: 1.5px 0;">Total</th>
             </tr>
           </thead>
           <tbody>
@@ -252,42 +262,38 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               <td colspan="2" style="text-align: right; padding: 1.5px 0;">Delivery:</td>
               <td style="text-align: right; padding: 1.5px 0;">+${selectedOrder.deliveryFee} TK</td>
             </tr>
-            <tr style="border-top: 1px dashed #000; font-weight: 900; font-size: 8px;">
+            <tr style="border-top: 1px dashed #000; font-weight: 900; font-size: ${fontSizeBody};">
               <td colspan="2" style="text-align: right; padding: 1.5px 0;">Grand Total:</td>
               <td style="text-align: right; padding: 1.5px 0;">${selectedOrder.total} TK</td>
             </tr>
           </tbody>
         </table>
 
-        <div style="background: #000; color: #fff; padding: 3px; text-align: center; font-weight: bold; margin-bottom: 4px; border-radius: 1px;">
-          <span style="font-size: 7.5px; text-transform: uppercase; letter-spacing: 0.3px; color: #fff;">
+        <div style="background: #000; color: #fff; padding: 2.5px 3px; text-align: center; font-weight: bold; margin-bottom: 3px; border-radius: 1px;">
+          <span style="font-size: 6.5px; text-transform: uppercase; letter-spacing: 0.2px; color: #fff;">
             ${lang === 'en' ? 'CASH TO COLLECT (COD):' : 'কালেক্টেড ক্যাশ (COD):'}
           </span>
-          <span style="font-size: 11px; font-weight: 900; color: #fff; margin-left: 5px; background: #fff; color: #000; padding: 0.5px 4px; border-radius: 1px; display: inline-block;">
+          <span style="font-size: 10px; font-weight: 900; color: #fff; margin-left: 4px; background: #fff; color: #000; padding: 0.5px 3px; border-radius: 1px; display: inline-block;">
             ${selectedOrder.total} TK
           </span>
-          <div style="font-size: 6.5px; text-transform: uppercase; font-weight: bold; color: #fff; margin-top: 1px; opacity: 0.9;">
+          <div style="font-size: 6px; text-transform: uppercase; font-weight: bold; color: #fff; margin-top: 1px; opacity: 0.9;">
             ${selectedOrder.paymentMethod === 'bkash' ? (lang === 'en' ? 'PAID ONLINE (bKash)' : 'বিকাশে পরিশোধিত') : (lang === 'en' ? 'COLLECT CASH ON DELIVERY' : 'ডেলিভারিতে ক্যাশ সংগ্রহ করুন')}
           </div>
         </div>
 
-        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed #ccc; padding-top: 3px; margin-top: 3px; color: #000;">
-          <div style="font-size: 6.5px; color: #000; max-width: 55%; text-align: left; font-weight: bold; line-height: 1.15;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed #ccc; padding-top: 2px; margin-top: 2px; color: #000;">
+          <div style="font-size: 6px; color: #000; max-width: 55%; text-align: left; font-weight: bold; line-height: 1.1;">
             ${lang === 'en' ? 'Thank you for shopping with Master Mart!' : 'মাস্টার মার্ট এর সাথে কেনাকাটার জন্য ধন্যবাদ!'}
           </div>
           <div style="text-align: right;">
-            <div style="display: flex; justify-content: flex-end; align-items: center; gap: 1px; height: 10px;">
-              <div style="width: 2px; height: 10px; background: #000;"></div>
-              <div style="width: 1px; height: 10px; background: #000;"></div>
-              <div style="width: 3px; height: 10px; background: #000;"></div>
-              <div style="width: 1.5px; height: 10px; background: #000;"></div>
-              <div style="width: 1px; height: 10px; background: #000;"></div>
-              <div style="width: 2px; height: 10px; background: #000;"></div>
-              <div style="width: 1px; height: 10px; background: #000;"></div>
-              <div style="width: 3px; height: 10px; background: #000;"></div>
-              <div style="width: 1.5px; height: 10px; background: #000;"></div>
+            <div style="display: flex; justify-content: flex-end; align-items: center; gap: 1px; height: 9px;">
+              <div style="width: 2px; height: 9px; background: #000;"></div>
+              <div style="width: 1px; height: 9px; background: #000;"></div>
+              <div style="width: 2.5px; height: 9px; background: #000;"></div>
+              <div style="width: 1px; height: 9px; background: #000;"></div>
+              <div style="width: 2px; height: 9px; background: #000;"></div>
             </div>
-            <div style="font-size: 6.5px; font-weight: bold; color: #000; margin-top: 1px;">*${selectedOrder.id}*</div>
+            <div style="font-size: 6px; font-weight: bold; color: #000; margin-top: 1px;">*${selectedOrder.id}*</div>
           </div>
         </div>
       </div>
@@ -296,8 +302,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     const slip1 = getSlipHtml('CUSTOMER / PACKAGE COPY', 'গ্রাহক / প্যাকেজ কপি');
     const slip2 = getSlipHtml('OFFICE / MERCHANT COPY', 'অফিস / মার্চেন্ট কপি');
     const divider = `
-      <div style="width: 100%; max-width: 95mm; margin: 4px auto; border-top: 1px dashed #000; position: relative; text-align: center; height: 1px; page-break-inside: avoid;">
-        <span style="position: absolute; top: -7px; left: 50%; transform: translateX(-50%); background: #fff; padding: 0 6px; font-size: 8px; font-weight: bold; color: #000; font-family: sans-serif;">✂️ ${lang === 'en' ? 'TEAR ALONG LINE' : 'এখান থেকে কাটুন'} ✂️</span>
+      <div style="width: 100%; max-width: ${slipMaxWidth}; margin: 3px auto; border-top: 1px dashed #000; position: relative; text-align: center; height: 1px; page-break-inside: avoid;">
+        <span style="position: absolute; top: -7px; left: 50%; transform: translateX(-50%); background: #fff; padding: 0 4px; font-size: 7.5px; font-weight: bold; color: #000; font-family: sans-serif;">✂️ ${lang === 'en' ? 'TEAR ALONG LINE' : 'এখান থেকে কাটুন'} ✂️</span>
       </div>
     `;
 
@@ -315,8 +321,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 color: #000 !important;
               }
               @page {
-                size: A6 portrait;
-                margin: 2mm 3mm;
+                ${pageSizeRule}
               }
               .slip-container {
                 page-break-inside: avoid;
@@ -327,7 +332,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             }
             body {
               background: #fff;
-              padding: 5px;
+              padding: 3px;
               margin: 0;
               color: #000;
               -webkit-print-color-adjust: exact;
@@ -418,6 +423,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [driverPhone, setDriverPhone] = useState('');
   const [driverProgress, setDriverProgress] = useState<number>(25);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
+  const [printPaperSize, setPrintPaperSize] = useState<'pos57' | 'pos80' | 'a6'>('pos57');
 
   const handleOpenOrder = (order: Order) => {
     setSelectedOrder(order);
@@ -485,28 +491,28 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex flex-col font-sans selection:bg-emerald-500/10">
       
       {/* Admin Top Header Navigation */}
-      <header className="bg-white border-b border-slate-150 py-4.5 px-6 dark:bg-slate-900 dark:border-slate-800 sticky top-0 z-40 shadow-xs">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-2xl bg-linear-to-tr from-emerald-500 to-teal-600 flex items-center justify-center text-white shadow-md">
-              <Sliders className="h-5 w-5" />
+      <header className="bg-white border-b border-slate-150 py-3 sm:py-4.5 px-4 sm:px-6 dark:bg-slate-900 dark:border-slate-800 sticky top-0 z-40 shadow-xs">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-4">
+          <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+            <div className="h-8 w-8 sm:h-10 sm:w-10 shrink-0 rounded-xl sm:rounded-2xl bg-linear-to-tr from-emerald-500 to-teal-600 flex items-center justify-center text-white shadow-md">
+              <Sliders className="h-4 w-4 sm:h-5 sm:w-5" />
             </div>
-            <div>
+            <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <h1 className="text-md font-black text-slate-900 dark:text-white uppercase tracking-wider">
-                  {lang === 'en' ? 'Master Mart Admin Portal' : 'মাস্টার মার্ট এডমিন প্যানেল'}
+                <h1 className="text-sm sm:text-md font-black text-slate-900 dark:text-white uppercase tracking-wider truncate">
+                  {lang === 'en' ? 'Master Mart Admin' : 'এডমিন প্যানেল'}
                 </h1>
-                <span className="text-[9px] font-black uppercase text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-sm">
+                <span className="hidden sm:inline-block text-[9px] font-black uppercase text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-sm shrink-0">
                   Live DB
                 </span>
               </div>
-              <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">
+              <p className="text-[9px] sm:text-[10px] text-slate-400 font-semibold uppercase tracking-wide truncate">
                 {lang === 'en' ? 'Manage products, track orders, live metrics' : 'পণ্য ও অর্ডার লাইভ কন্ট্রোল করুন'}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 shrink-0">
             {/* Nav tabs (desktop) */}
             <div className="hidden md:flex bg-slate-100 p-1 rounded-xl dark:bg-slate-800 border border-slate-200/40 dark:border-slate-700/40">
               <button
@@ -563,136 +569,145 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             {/* Back button */}
             <button
               onClick={onClose}
-              className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800 text-xs font-black text-slate-600 dark:text-slate-300 px-4 py-2 transition-all cursor-pointer shadow-xs active:scale-95"
+              className="flex items-center justify-center gap-1.5 rounded-lg sm:rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800 text-xs font-black text-slate-600 dark:text-slate-300 w-8 h-8 sm:w-auto sm:h-auto sm:px-4 sm:py-2 transition-all cursor-pointer shadow-xs active:scale-95 shrink-0"
+              title={lang === 'en' ? 'Exit Admin' : 'বাহির হোন'}
             >
-              <ArrowLeft className="h-4 w-4" />
-              <span>{lang === 'en' ? 'Exit Admin' : 'বাহির হোন'}</span>
+              <ArrowLeft className="h-4 w-4 shrink-0" />
+              <span className="hidden sm:inline">{lang === 'en' ? 'Exit Admin' : 'বাহির হোন'}</span>
             </button>
           </div>
         </div>
 
-        {/* Tab navigation (Mobile Only) */}
-        <div className="flex md:hidden mt-4 bg-slate-100 p-1 rounded-xl dark:bg-slate-800 border border-slate-200/40 dark:border-slate-700/40">
+        {/* Tab navigation (Mobile Only) - Fixed Bottom Navbar */}
+        <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md dark:bg-slate-900/95 border-t border-slate-200 dark:border-slate-800 flex justify-between items-center px-2 py-1.5 pb-safe shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.1)]">
           <button
             onClick={() => { setActiveTab('overview'); setSelectedOrder(null); }}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+            className={`flex-1 flex flex-col items-center justify-center gap-1 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer ${
               activeTab === 'overview'
-                ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white'
+                ? 'text-emerald-600 dark:text-emerald-400'
                 : 'text-slate-500 dark:text-slate-400'
             }`}
           >
-            <LayoutDashboard className="h-3.5 w-3.5" />
+            <div className={`p-1.5 rounded-lg transition-colors ${activeTab === 'overview' ? 'bg-emerald-50 dark:bg-emerald-950/50' : ''}`}>
+              <LayoutDashboard className="h-4 w-4" />
+            </div>
             <span>{lang === 'en' ? 'Dashboard' : 'ড্যাশবোর্ড'}</span>
           </button>
           <button
             onClick={() => { setActiveTab('orders'); setSelectedOrder(null); }}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+            className={`flex-1 flex flex-col items-center justify-center gap-1 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer ${
               activeTab === 'orders'
-                ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white'
+                ? 'text-emerald-600 dark:text-emerald-400'
                 : 'text-slate-500 dark:text-slate-400'
             }`}
           >
-            <ShoppingBag className="h-3.5 w-3.5" />
+            <div className={`p-1.5 rounded-lg transition-colors relative ${activeTab === 'orders' ? 'bg-emerald-50 dark:bg-emerald-950/50' : ''}`}>
+              <ShoppingBag className="h-4 w-4" />
+              {pendingOrdersCount > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center text-[7px] bg-amber-500 text-white rounded-full animate-pulse border border-white dark:border-slate-900">
+                  {pendingOrdersCount}
+                </span>
+              )}
+            </div>
             <span>{lang === 'en' ? 'Orders' : 'অর্ডার'}</span>
-            {pendingOrdersCount > 0 && (
-              <span className="px-1.5 py-0.5 text-[8px] bg-amber-500 text-white rounded-full ml-1">
-                {pendingOrdersCount}
-              </span>
-            )}
           </button>
           <button
             onClick={() => { setActiveTab('products'); setSelectedOrder(null); }}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+            className={`flex-1 flex flex-col items-center justify-center gap-1 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer ${
               activeTab === 'products'
-                ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white'
+                ? 'text-emerald-600 dark:text-emerald-400'
                 : 'text-slate-500 dark:text-slate-400'
             }`}
           >
-            <Layers className="h-3.5 w-3.5" />
+            <div className={`p-1.5 rounded-lg transition-colors ${activeTab === 'products' ? 'bg-emerald-50 dark:bg-emerald-950/50' : ''}`}>
+              <Layers className="h-4 w-4" />
+            </div>
             <span>{lang === 'en' ? 'Products' : 'পণ্য'}</span>
           </button>
           <button
             onClick={() => { setActiveTab('settings'); setSelectedOrder(null); }}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+            className={`flex-1 flex flex-col items-center justify-center gap-1 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer ${
               activeTab === 'settings'
-                ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white'
+                ? 'text-emerald-600 dark:text-emerald-400'
                 : 'text-slate-500 dark:text-slate-400'
             }`}
           >
-            <Settings className="h-3.5 w-3.5" />
+            <div className={`p-1.5 rounded-lg transition-colors ${activeTab === 'settings' ? 'bg-emerald-50 dark:bg-emerald-950/50' : ''}`}>
+              <Settings className="h-4 w-4" />
+            </div>
             <span>{lang === 'en' ? 'Settings' : 'সেটিংস'}</span>
           </button>
         </div>
       </header>
 
       {/* Main Admin Panel Dashboard Area */}
-      <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 space-y-6">
+      <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 space-y-6 overflow-y-auto pb-24 md:pb-6">
         
         {/* STATS COUNTERS GRID */}
         {activeTab === 'overview' && (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" id="admin-stats-overview-grid">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 pb-4 md:pb-0" id="admin-stats-overview-grid">
             {/* Sales Card */}
-            <div className="bg-white border border-slate-150 p-4.5 rounded-3xl dark:bg-slate-900 dark:border-slate-800 shadow-xs flex items-center gap-4 relative overflow-hidden group">
+            <div className="bg-white border border-slate-150 p-4 sm:p-4.5 rounded-2xl sm:rounded-3xl dark:bg-slate-900 dark:border-slate-800 shadow-xs flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 relative overflow-hidden group">
               <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full blur-xl group-hover:scale-110 transition-all duration-300" />
-              <div className="h-11 w-11 rounded-2xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center dark:bg-emerald-500/20 dark:text-emerald-400 shrink-0">
-                <DollarSign className="h-5 w-5" />
+              <div className="h-9 w-9 sm:h-11 sm:w-11 rounded-xl sm:rounded-2xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center dark:bg-emerald-500/20 dark:text-emerald-400 shrink-0 font-bold text-lg sm:text-xl">
+                ৳
               </div>
-              <div className="truncate">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
+              <div className="truncate w-full">
+                <span className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider block">
                   {lang === 'en' ? 'Total Revenue' : 'মোট বিক্রয়'}
                 </span>
-                <span className="text-lg font-black text-slate-900 dark:text-white tracking-tight">
-                  TK {totalSales.toLocaleString()}
+                <span className="text-base sm:text-lg font-black text-slate-900 dark:text-white tracking-tight">
+                  ৳ {totalSales.toLocaleString()}
                 </span>
               </div>
             </div>
 
             {/* Orders Card */}
-            <div className="bg-white border border-slate-150 p-4.5 rounded-3xl dark:bg-slate-900 dark:border-slate-800 shadow-xs flex items-center gap-4 relative overflow-hidden group">
+            <div className="bg-white border border-slate-150 p-4 sm:p-4.5 rounded-2xl sm:rounded-3xl dark:bg-slate-900 dark:border-slate-800 shadow-xs flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 relative overflow-hidden group">
               <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 rounded-full blur-xl group-hover:scale-110 transition-all duration-300" />
-              <div className="h-11 w-11 rounded-2xl bg-blue-500/10 text-blue-600 flex items-center justify-center dark:bg-blue-500/20 dark:text-blue-400 shrink-0">
-                <ShoppingBag className="h-5 w-5" />
+              <div className="h-9 w-9 sm:h-11 sm:w-11 rounded-xl sm:rounded-2xl bg-blue-500/10 text-blue-600 flex items-center justify-center dark:bg-blue-500/20 dark:text-blue-400 shrink-0">
+                <ShoppingBag className="h-4 w-4 sm:h-5 sm:w-5" />
               </div>
-              <div className="truncate">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
+              <div className="truncate w-full">
+                <span className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider block">
                   {lang === 'en' ? 'Total Orders' : 'মোট অর্ডার'}
                 </span>
-                <span className="text-lg font-black text-slate-900 dark:text-white tracking-tight">
+                <span className="text-base sm:text-lg font-black text-slate-900 dark:text-white tracking-tight">
                   {orders.length} {lang === 'en' ? 'Placed' : 'টি'}
                 </span>
               </div>
             </div>
 
             {/* Total Products Card */}
-            <div className="bg-white border border-slate-150 p-4.5 rounded-3xl dark:bg-slate-900 dark:border-slate-800 shadow-xs flex items-center gap-4 relative overflow-hidden group">
+            <div className="bg-white border border-slate-150 p-4 sm:p-4.5 rounded-2xl sm:rounded-3xl dark:bg-slate-900 dark:border-slate-800 shadow-xs flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 relative overflow-hidden group">
               <div className="absolute top-0 right-0 w-24 h-24 bg-purple-500/5 rounded-full blur-xl group-hover:scale-110 transition-all duration-300" />
-              <div className="h-11 w-11 rounded-2xl bg-purple-500/10 text-purple-600 flex items-center justify-center dark:bg-purple-500/20 dark:text-purple-400 shrink-0">
-                <Package className="h-5 w-5" />
+              <div className="h-9 w-9 sm:h-11 sm:w-11 rounded-xl sm:rounded-2xl bg-purple-500/10 text-purple-600 flex items-center justify-center dark:bg-purple-500/20 dark:text-purple-400 shrink-0">
+                <Package className="h-4 w-4 sm:h-5 sm:w-5" />
               </div>
-              <div className="truncate">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
+              <div className="truncate w-full">
+                <span className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider block">
                   {lang === 'en' ? 'Active Catalog' : 'মোট প্রোডাক্ট'}
                 </span>
-                <span className="text-lg font-black text-slate-900 dark:text-white tracking-tight">
+                <span className="text-base sm:text-lg font-black text-slate-900 dark:text-white tracking-tight">
                   {products.length} {lang === 'en' ? 'Items' : 'টি'}
                 </span>
               </div>
             </div>
 
             {/* Low stock Card */}
-            <div className={`border p-4.5 rounded-3xl shadow-xs flex items-center gap-4 relative overflow-hidden group transition-all ${
+            <div className={`border p-4 sm:p-4.5 rounded-2xl sm:rounded-3xl shadow-xs flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 relative overflow-hidden group transition-all ${
               lowStockCount > 0 
                 ? 'bg-rose-50 border-rose-150 dark:bg-rose-950/20 dark:border-rose-900/40 text-rose-600 dark:text-rose-400' 
                 : 'bg-white border-slate-150 dark:bg-slate-900 dark:border-slate-800 text-slate-800'
             }`}>
-              <div className="h-11 w-11 rounded-2xl bg-rose-500/10 text-rose-500 flex items-center justify-center dark:bg-rose-500/20 shrink-0">
-                <AlertTriangle className="h-5 w-5" />
+              <div className="h-9 w-9 sm:h-11 sm:w-11 rounded-xl sm:rounded-2xl bg-rose-500/10 text-rose-500 flex items-center justify-center dark:bg-rose-500/20 shrink-0">
+                <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5" />
               </div>
-              <div className="truncate">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
+              <div className="truncate w-full">
+                <span className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider block">
                   {lang === 'en' ? 'Low Stock Warning' : 'কম স্টক পণ্য'}
                 </span>
-                <span className="text-lg font-black tracking-tight">
+                <span className="text-base sm:text-lg font-black tracking-tight">
                   {lowStockCount} {lang === 'en' ? 'Low stock' : 'টি প্রোডাক্ট'}
                 </span>
               </div>
@@ -719,9 +734,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
 
               {/* Graphical bars illustrating hourly deliveries */}
-              <div className="h-44 flex items-end justify-between gap-3 pt-4 border-b border-slate-100 dark:border-slate-800">
+              <div className="h-44 flex items-end justify-between gap-1 sm:gap-3 pt-4 border-b border-slate-100 dark:border-slate-800 overflow-x-auto hide-scrollbar pb-1">
                 {[45, 60, 35, 75, 90, 110, 140, 120, 165, 150, 190, 220].map((val, idx) => (
-                  <div key={idx} className="flex-1 flex flex-col items-center gap-1.5 group cursor-pointer">
+                  <div key={idx} className="flex-1 min-w-[20px] sm:min-w-0 flex flex-col items-center gap-1.5 group cursor-pointer">
                     <span className="text-[8px] font-black text-slate-400 opacity-0 group-hover:opacity-100 transition-all">
                       {val}
                     </span>
@@ -740,7 +755,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <span>{lang === 'en' ? 'Showing last 12 hours activity' : 'গত ১২ ঘণ্টার ট্রানজেকশন অগ্রগতি'}</span>
                 <span className="text-emerald-500 flex items-center gap-1">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping" />
-                  {lang === 'en' ? 'Firestore Connection Active' : 'ফায়ারস্টোর কানেকশন সক্রিয়'}
+                  {lang === 'en' ? 'SQL Database Connected' : 'SQL ডাটাবেস কানেক্টেড'}
                 </span>
               </div>
             </div>
@@ -852,7 +867,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                         <div className="text-right shrink-0">
                           <span className="text-sm font-black text-emerald-600 dark:text-emerald-400 block">
-                            TK {order.total}
+                            ৳ {order.total}
                           </span>
                           <span className="text-[9px] font-bold text-slate-400 block">
                             🕒 {order.timestamp}
@@ -877,7 +892,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   <p>{lang === 'en' ? 'Select an order from the list to update progress' : 'স্ট্যাটাস আপডেট করার জন্য বাম থেকে অর্ডার সিলেক্ট করুন'}</p>
                 </div>
               ) : (
-                <div className="space-y-4" id="order-control-hub-details">
+                <div className="space-y-4 flex-1 overflow-y-auto pr-2" id="order-control-hub-details">
                   
                   {/* Customer Information summary */}
                   <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-2xl border border-slate-100 dark:border-slate-850 space-y-2 text-xs font-semibold text-slate-600 dark:text-slate-350">
@@ -1043,9 +1058,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
 
             {/* Inventory table */}
-            <div className="overflow-x-auto rounded-2xl border border-slate-100 dark:border-slate-800" id="admin-inventory-table-container">
-              <table className="w-full text-left border-collapse">
-                <thead>
+            <div className="overflow-x-auto overflow-y-auto max-h-[60vh] rounded-2xl border border-slate-100 dark:border-slate-800 relative" id="admin-inventory-table-container">
+              <table className="w-full text-left border-collapse min-w-[750px]">
+                <thead className="sticky top-0 z-10">
                   <tr className="bg-slate-50 dark:bg-slate-950 text-[10px] font-black uppercase text-slate-400 tracking-wider border-b border-slate-100 dark:border-slate-800">
                     <th className="py-3 px-4">{lang === 'en' ? 'Product' : 'পণ্য বিবরণ'}</th>
                     <th className="py-3 px-4">{lang === 'en' ? 'Category' : 'ক্যাটাগরি'}</th>
@@ -1059,25 +1074,27 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     <tr key={prod.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-950/20 transition-colors">
                       
                       {/* Image & Title Column */}
-                      <td className="py-3.5 px-4 flex items-center gap-3">
-                        <img
-                          src={prod.image}
-                          alt={prod.nameEn}
-                          className="h-10 w-10 rounded-lg object-cover bg-slate-50 border border-slate-100 dark:border-slate-800"
-                          referrerPolicy="no-referrer"
-                        />
-                        <div className="truncate max-w-[150px] sm:max-w-[220px]">
-                          <span className="font-extrabold text-slate-950 dark:text-white block truncate leading-tight">
-                            {lang === 'en' ? prod.nameEn : prod.nameBn}
-                          </span>
-                          <span className="text-[10px] text-slate-400 block tracking-tight font-medium">
-                            {lang === 'en' ? prod.unitEn : prod.unitBn} | ID: {prod.id}
-                          </span>
+                      <td className="py-3.5 px-4 min-w-[200px]">
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={prod.image}
+                            alt={prod.nameEn}
+                            className="h-10 w-10 shrink-0 rounded-lg object-cover bg-slate-50 border border-slate-100 dark:border-slate-800"
+                            referrerPolicy="no-referrer"
+                          />
+                          <div className="truncate max-w-[150px] sm:max-w-[220px]">
+                            <span className="font-extrabold text-slate-950 dark:text-white block truncate leading-tight">
+                              {lang === 'en' ? prod.nameEn : prod.nameBn}
+                            </span>
+                            <span className="text-[10px] text-slate-400 block tracking-tight font-medium truncate">
+                              {lang === 'en' ? prod.unitEn : prod.unitBn} | ID: {prod.id}
+                            </span>
+                          </div>
                         </div>
                       </td>
 
                       {/* Category Label */}
-                      <td className="py-3.5 px-4">
+                      <td className="py-3.5 px-4 whitespace-nowrap">
                         <span className="text-[10px] font-black uppercase bg-slate-100 dark:bg-slate-800 text-slate-500 px-2 py-1 rounded-md">
                           {prod.category}
                         </span>
@@ -1086,11 +1103,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       {/* Pricing Column */}
                       <td className="py-3.5 px-4">
                         <span className="font-black text-slate-900 dark:text-white">
-                          TK {prod.discountPrice || prod.price}
+                          ৳ {prod.discountPrice || prod.price}
                         </span>
                         {prod.discountPrice && (
                           <span className="text-[10px] text-slate-400 line-through block font-medium">
-                            TK {prod.price}
+                            ৳ {prod.price}
                           </span>
                         )}
                       </td>
@@ -1613,7 +1630,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     {lang === 'en' ? 'Select Chat Option' : 'চ্যাট অপশন নির্বাচন করুন'}
                   </label>
                   
-                  <div className="flex flex-wrap gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     {/* None Option */}
                     <button
                       type="button"
@@ -1655,12 +1672,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       {activeChatPlatform === 'whatsapp' && <Check className="h-3.5 w-3.5" />}
                       <span>Whatsapp</span>
                     </button>
+
+                    {/* Both Pill */}
+                    <button
+                      type="button"
+                      onClick={() => setActiveChatPlatform('both')}
+                      className={`px-5 py-2.5 rounded-full text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer border ${
+                        activeChatPlatform === 'both'
+                          ? 'bg-slate-900 border-slate-900 text-white shadow-md dark:bg-slate-100 dark:border-slate-100 dark:text-slate-900'
+                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 dark:bg-slate-950 dark:border-slate-800 dark:text-white dark:hover:bg-slate-900'
+                      }`}
+                    >
+                      {activeChatPlatform === 'both' && <Check className="h-3.5 w-3.5" />}
+                      <span>{lang === 'en' ? 'Both' : 'উভয়'}</span>
+                    </button>
                   </div>
                 </div>
               </div>
 
               {/* Configure Fields based on active chat platform */}
-              {activeChatPlatform === 'facebook' && (
+              {(activeChatPlatform === 'facebook' || activeChatPlatform === 'both') && (
                 <div className="bg-white border border-slate-150 p-6 rounded-3xl dark:bg-slate-900 dark:border-slate-800 shadow-xs space-y-4">
                   <div className="border-b border-slate-100 dark:border-slate-800 pb-3">
                     <h3 className="text-xs font-black text-slate-850 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
@@ -1679,13 +1710,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       onChange={(e) => setFacebookUrl(e.target.value)}
                       placeholder="e.g. https://m.me/your_page_name"
                       className="w-full rounded-xl border border-slate-150 bg-slate-50 px-3.5 py-2.5 text-xs text-slate-900 outline-hidden focus:border-indigo-500 focus:bg-white dark:border-slate-800 dark:bg-slate-950 dark:text-white font-extrabold"
-                      required
+                      required={activeChatPlatform === 'facebook' || activeChatPlatform === 'both'}
                     />
                   </div>
                 </div>
               )}
 
-              {activeChatPlatform === 'whatsapp' && (
+              {(activeChatPlatform === 'whatsapp' || activeChatPlatform === 'both') && (
                 <div className="bg-white border border-slate-150 p-6 rounded-3xl dark:bg-slate-900 dark:border-slate-800 shadow-xs space-y-4">
                   <div className="border-b border-slate-100 dark:border-slate-800 pb-3">
                     <h3 className="text-xs font-black text-slate-850 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
@@ -1954,11 +1985,58 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 </div>
               </div>
 
-              {/* Preview Container Label */}
-              <div className="space-y-2">
-                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                  {lang === 'en' ? 'Print Label Preview (Fits A6/Dual Slips)' : 'প্রিন্ট লেবেল প্রিভিউ (A6/ডুয়াল স্লিপ)'}
-                </p>
+              {/* Paper Size Selector & Preview Label */}
+              <div className="space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                    {lang === 'en' ? 'Select Thermal POS Paper Size' : 'থার্মাল POS পেপার সাইজ সিলেক্ট করুন'}
+                  </p>
+                  <span className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-500/20 px-2 py-0.5 rounded-full inline-block">
+                    {printPaperSize === 'pos57' ? '🖨️ 57 mm × 40 mm POS Roll' : printPaperSize === 'pos80' ? '🖨️ 80 mm POS Roll' : '📑 A6 Shipping Label'}
+                  </span>
+                </div>
+
+                {/* Paper Size Radio Switch Buttons */}
+                <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-100 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setPrintPaperSize('pos57')}
+                    className={`py-2 px-1 rounded-lg text-[10.5px] font-black flex flex-col sm:flex-row items-center justify-center gap-1 transition-all cursor-pointer ${
+                      printPaperSize === 'pos57'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    <span>57×40mm</span>
+                    <span className="text-[9px] opacity-80">(POS Roll)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPrintPaperSize('pos80')}
+                    className={`py-2 px-1 rounded-lg text-[10.5px] font-black flex flex-col sm:flex-row items-center justify-center gap-1 transition-all cursor-pointer ${
+                      printPaperSize === 'pos80'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    <span>80mm</span>
+                    <span className="text-[9px] opacity-80">(POS Thermal)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPrintPaperSize('a6')}
+                    className={`py-2 px-1 rounded-lg text-[10.5px] font-black flex flex-col sm:flex-row items-center justify-center gap-1 transition-all cursor-pointer ${
+                      printPaperSize === 'a6'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    <span>A6 Sheet</span>
+                    <span className="text-[9px] opacity-80">(Shipping)</span>
+                  </button>
+                </div>
 
                 {/* Styled Print Preview Box */}
                 <div className="bg-slate-50 dark:bg-slate-950 border-2 border-dashed border-slate-300 dark:border-slate-800 rounded-2xl p-4 flex flex-col items-center space-y-6 max-h-[50vh] overflow-y-auto w-full">
@@ -1974,7 +2052,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         </div>
                       )}
 
-                      <div className="w-full max-w-[340px] bg-white text-slate-950 p-2.5 border border-slate-950 rounded-xs font-mono shadow-xs text-left" style={{ lineHeight: 1.15 }}>
+                      <div 
+                        className={`w-full ${printPaperSize === 'pos57' ? 'max-w-[215px]' : printPaperSize === 'pos80' ? 'max-w-[280px]' : 'max-w-[340px]'} bg-white text-slate-950 p-2 border border-slate-950 rounded-xs font-mono shadow-xs text-left transition-all duration-200`} 
+                        style={{ lineHeight: 1.15 }}
+                      >
                         {/* Inner Header */}
                         <div className="flex justify-between items-center border-b border-slate-950 pb-1 mb-1.5">
                           <div>
@@ -2175,7 +2256,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     {lang === 'en' ? productToDelete.nameEn : productToDelete.nameBn}
                   </span>
                   <span className="text-[9px] text-slate-400 block font-semibold mt-0.5">
-                    ID: {productToDelete.id} | TK {productToDelete.discountPrice || productToDelete.price}
+                    ID: {productToDelete.id} | ৳ {productToDelete.discountPrice || productToDelete.price}
                   </span>
                 </div>
               </div>

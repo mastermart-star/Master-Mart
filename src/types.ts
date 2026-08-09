@@ -84,7 +84,7 @@ export interface DeliverySettings {
 }
 
 export interface ChatSupportSettings {
-  activePlatform: 'facebook' | 'whatsapp' | 'none';
+  activePlatform: 'facebook' | 'whatsapp' | 'both' | 'none';
   facebookUrl: string;
   whatsappNumber: string;
   whatsappMessage: string;

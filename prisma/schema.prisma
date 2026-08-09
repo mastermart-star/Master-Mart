@@ -1,5 +1,5 @@
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -8,30 +8,30 @@ generator client {
 }
 
 model Product {
-  id            String   @id @map("id")
-  nameEn        String   @map("name_en")
-  nameBn        String   @map("name_bn")
-  category      String   @map("category")
-  price         Decimal  @map("price") @db.Decimal(10, 2)
-  unitEn        String   @map("unit_en")
-  unitBn        String   @map("unit_bn")
-  rating        Decimal  @default(4.5) @map("rating") @db.Decimal(3, 2)
-  image         String   @map("image") @db.Text
-  discountPrice Decimal? @map("discount_price") @db.Decimal(10, 2)
-  stock         Int      @map("stock")
-  isVeg         Boolean  @default(false) @map("is_veg")
-  descriptionEn String?  @map("description_en") @db.Text
-  descriptionBn String?  @map("description_bn") @db.Text
+  id            String  @id @map("id")
+  nameEn        String  @map("name_en")
+  nameBn        String  @map("name_bn")
+  category      String  @map("category")
+  price         Float   @map("price")
+  unitEn        String  @map("unit_en")
+  unitBn        String  @map("unit_bn")
+  rating        Float   @default(4.5) @map("rating")
+  image         String  @map("image")
+  discountPrice Float?  @map("discount_price")
+  stock         Int     @map("stock")
+  isVeg         Boolean @default(false) @map("is_veg")
+  descriptionEn String? @map("description_en")
+  descriptionBn String? @map("description_bn")
 
   @@map("products")
 }
 
 model Order {
   id                 String  @id @map("id")
-  items              String  @map("items") @db.Text
-  subtotal           Decimal @map("subtotal") @db.Decimal(10, 2)
-  deliveryFee        Decimal @map("delivery_fee") @db.Decimal(10, 2)
-  total              Decimal @map("total") @db.Decimal(10, 2)
+  items              String  @map("items")
+  subtotal           Float   @map("subtotal")
+  deliveryFee        Float   @map("delivery_fee")
+  total              Float   @map("total")
   status             String  @map("status")
   paymentMethod      String  @map("payment_method")
   paymentStatus      String  @map("payment_status")
@@ -39,25 +39,33 @@ model Order {
   etaMinutes         Int     @map("eta_minutes")
   driverName         String? @map("driver_name")
   driverPhone        String? @map("driver_phone")
-  driverPhoto        String? @map("driver_photo") @db.Text
+  driverPhoto        String? @map("driver_photo")
   stepProgress       Int     @default(0) @map("step_progress")
   customerName       String? @map("customer_name")
   customerPhone      String? @map("customer_phone")
-  customerAddress    String? @map("customer_address") @db.Text
+  customerAddress    String? @map("customer_address")
   customerEmail      String? @map("customer_email")
   courierTrackingId  String? @map("courier_tracking_id")
-  courierTrackingUrl String? @map("courier_tracking_url") @db.Text
+  courierTrackingUrl String? @map("courier_tracking_url")
 
   @@map("orders")
 }
 
 model Review {
-  id        String  @id @map("id")
-  productId String  @map("product_id")
-  userName  String  @map("user_name")
-  rating    Decimal @map("rating") @db.Decimal(3, 2)
-  comment   String  @map("comment") @db.Text
-  date      String  @map("date")
+  id        String @id @map("id")
+  productId String @map("product_id")
+  userName  String @map("user_name")
+  rating    Float  @map("rating")
+  comment   String @map("comment")
+  date      String @map("date")
 
   @@map("reviews")
 }
+
+model Setting {
+  key   String @id @map("key")
+  value String @map("value")
+
+  @@map("settings")
+}
+

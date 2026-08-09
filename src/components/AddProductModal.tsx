@@ -299,7 +299,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
                 {lang === 'en' ? 'Add New Product to Database' : 'ডাটাবেসে নতুন পণ্য যোগ করুন'}
               </h2>
               <p className="text-[10px] text-slate-400 font-semibold tracking-wide uppercase">
-                {lang === 'en' ? 'Real-time Firestore Integration' : 'রিয়েল-টাইম ফায়ারস্টোর ডাটাবেস'}
+                {lang === 'en' ? 'Full-Stack SQL Database Integration' : 'ফুল-স্ট্যাক SQL ডাটাবেস ইন্টিগ্রেশন'}
               </p>
             </div>
           </div>
@@ -606,7 +606,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
               <Sparkles className="h-3.5 w-3.5 text-amber-500 animate-pulse" />
               {lang === 'en' ? 'Or Choose a Premium Preset Image' : 'অথবা নিচের কোনো প্রিমিয়াম ছবি সিলেক্ট করুন'}
             </label>
-            <div className="grid grid-cols-4 sm:grid-cols-6 gap-2" id="image-preset-selector-grid">
+            <div className="flex overflow-x-auto gap-2 pb-2 snap-x scrollbar-thin" id="image-preset-selector-grid">
               {IMAGE_PRESETS.map((preset, idx) => {
                 const isSelected = image === preset.url;
                 return (
@@ -614,7 +614,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
                     key={`preset-${idx}`}
                     type="button"
                     onClick={() => setImage(preset.url)}
-                    className={`relative rounded-xl overflow-hidden aspect-square border-2 transition-all cursor-pointer group ${
+                    className={`relative rounded-xl overflow-hidden aspect-square shrink-0 w-20 sm:w-24 border-2 transition-all cursor-pointer group snap-start ${
                       isSelected ? 'border-emerald-500 shadow-md scale-102 ring-2 ring-emerald-500/20' : 'border-slate-100 hover:border-slate-200 dark:border-slate-800'
                     }`}
                     title={lang === 'en' ? preset.labelEn : preset.labelBn}
@@ -638,28 +638,27 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
               })}
             </div>
           </div>
-        </form>
 
-        {/* Modal Actions Footer */}
-        <div className="border-t border-slate-100 dark:border-slate-800/60 px-6 py-4 flex items-center justify-end gap-3.5 bg-slate-50 dark:bg-slate-900/40">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-xl px-4 py-2.5 text-xs font-bold text-slate-500 hover:bg-slate-150 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white transition-all cursor-pointer"
-          >
-            {lang === 'en' ? 'Cancel' : 'বাতিল'}
-          </button>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={isLoading}
-            className="flex items-center gap-2 rounded-xl bg-emerald-600 dark:bg-emerald-500 px-5 py-2.5 text-xs font-black text-white hover:bg-emerald-700 active:scale-98 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md cursor-pointer"
-            id="save-new-product-btn"
-          >
-            <ShoppingBag className="h-4 w-4" />
-            <span>{isLoading ? (lang === 'en' ? 'Saving...' : 'সেভ হচ্ছে...') : (lang === 'en' ? 'Save Product' : 'পণ্য সেভ করুন')}</span>
-          </button>
-        </div>
+          {/* Modal Actions Footer */}
+          <div className="border-t border-slate-100 dark:border-slate-800/60 pt-4 flex items-center justify-end gap-3.5 mt-6">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-xl px-4 py-2.5 text-xs font-bold text-slate-500 hover:bg-slate-150 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white transition-all cursor-pointer"
+            >
+              {lang === 'en' ? 'Cancel' : 'বাতিল'}
+            </button>
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="flex items-center gap-2 rounded-xl bg-emerald-600 dark:bg-emerald-500 px-5 py-2.5 text-xs font-black text-white hover:bg-emerald-700 active:scale-98 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md cursor-pointer"
+              id="save-new-product-btn"
+            >
+              <ShoppingBag className="h-4 w-4" />
+              <span>{isLoading ? (lang === 'en' ? 'Saving...' : 'সেভ হচ্ছে...') : (lang === 'en' ? 'Save Product' : 'পণ্য সেভ করুন')}</span>
+            </button>
+          </div>
+        </form>
       </motion.div>
     </div>
   );

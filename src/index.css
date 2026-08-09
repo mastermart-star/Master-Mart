@@ -88,8 +88,8 @@ html.dark .scrollbar-thin::-webkit-webkit-scrollbar-thumb {
 /* Print Stylesheet for direct window.print() support */
 @media print {
   @page {
-    size: A4 portrait !important;
-    margin: 2mm 3mm !important;
+    size: auto;
+    margin: 1mm !important;
   }
   /* Hide the main React application */
   #root {
@@ -107,7 +107,6 @@ html.dark .scrollbar-thin::-webkit-webkit-scrollbar-thumb {
     transform: translateX(-50%) !important;
     top: 0 !important;
     width: 100% !important;
-    max-width: 520px !important;
     height: auto !important;
     min-height: unset !important;
     max-height: unset !important;

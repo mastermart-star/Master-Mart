@@ -144,7 +144,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
   // Calculators
   const checkoutSubtotal = propSubtotal || totalAmount;
-  const shippingFee = checkoutSubtotal >= 500 ? 0 : 80;
+  const shippingFee = checkoutSubtotal >= 1000 ? 0 : 80;
   const checkoutTotal = checkoutSubtotal + shippingFee;
 
   // Validation function
@@ -436,25 +436,25 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                               <span className="block text-xs font-black text-slate-800 dark:text-white">
                                 {lang === 'en' ? 'Inside Dhaka City' : 'ঢাকা সিটির ভেতরে'}
                               </span>
-                              {checkoutSubtotal >= 500 && (
+                              {checkoutSubtotal >= 1000 && (
                                 <span className="bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400 text-[9px] font-black px-1.5 py-0.5 rounded-sm uppercase tracking-wider">Free</span>
                               )}
                             </div>
                             <span className="text-[10px] font-bold text-slate-400 mt-0.5 block">{lang === 'en' ? 'Dhaka City Proper Home Delivery' : 'ঢাকা শহরের ভেতরে হোম ডেলিভারি'}</span>
                           </div>
-                          <span className={`text-xs font-black font-sans ${checkoutSubtotal >= 500 ? 'line-through text-slate-400' : 'text-emerald-600'}`}>
-                            {checkoutSubtotal >= 500 ? (lang === 'en' ? 'Free' : 'ফ্রি') : '80.00 ৳'}
+                          <span className={`text-xs font-black font-sans ${checkoutSubtotal >= 1000 ? 'line-through text-slate-400' : 'text-emerald-600'}`}>
+                            {checkoutSubtotal >= 1000 ? (lang === 'en' ? 'Free' : 'ফ্রি') : '80.00 ৳'}
                           </span>
                         </div>
                       </div>
 
-                      {/* Promo banners indicating Free Shipping above 500 */}
+                      {/* Promo banners indicating Free Shipping above 1000 */}
                       <div className="mt-2.5 p-2.5 rounded-xl border border-emerald-500/10 bg-emerald-50/5 dark:bg-emerald-950/5 flex items-center gap-2">
                         <Truck className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                         <span className="text-[10.5px] font-bold text-slate-500 dark:text-zinc-400">
                           {lang === 'en' 
-                            ? 'Get FREE delivery on orders totaling ৳500 or more!'
-                            : '৳৫০০ বা তার বেশি অর্ডারে ফ্রী ডেলিভারি সুবিধা উপভোগ করুন!'}
+                            ? 'Get FREE delivery on orders totaling ৳1000 or more (৳80 Shipping Waived)!'
+                            : '৳১০০০ বা তার বেশি অর্ডারে ফ্রী ডেলিভারি (৳৮০ চার্জ ছাড়) সুবিধা উপভোগ করুন!'}
                         </span>
                       </div>
                     </div>
