@@ -1,206 +1,119 @@
-# 🛒 Master Mart
+# Master Mart — Next.js 16 App Router
 
-**Master Mart** is a high-fidelity, Blinkit-style instant delivery e-commerce platform built with React, Vite, and Tailwind CSS. It features a fully responsive design optimized for a simulated mobile app view, full-text searching, localized dark mode toggles, instant order delivery tracking, customer reviews, card & bKash mobile banking integrations, and a robust admin dashboard.
+The Master-Mart grocery storefront, rebuilt from the Vite + Express + Prisma/SQLite
+monolith into the architecture defined by `nextjs-starter-guide/CLAUDE.md` and
+`BOOTSTRAP.md`: **Next.js 16 (App Router) · MongoDB + Mongoose 9 · Better Auth ·
+Tailwind v4 + shadcn/ui · TanStack Query · React Hook Form + Zod 4**.
 
----
+## Quick start
 
-## ✨ Features
-
-- **⚡ Instant Blinkit-Style Commerce**: Sleek shopping experience with rapid item additions, animated cart drawers, and beautiful image assets.
-- **🛠️ Robust Admin Panel**: Manage products (add, edit, delete), view active orders, and update real-time delivery status tracking.
-- **🔥 Persistent SQL Database Engine**: Powered by **Prisma ORM** with **SQLite** for instant zero-config development, and seamless compatibility with **MySQL / PostgreSQL** for production deployment.
-- **🗺️ Interactive Order Tracking**: Visual step-by-step progress tracker for active orders with simulated instant updates.
-- **💳 Payment Integration**: Dynamic checkout modals supporting bKash, Card, and Cash on Delivery payments.
-- **🌓 Dynamic Dark Mode**: Elegant user-toggleable themes optimized for day and night shopping.
-
----
-
-## 🚀 Local Development Setup
-
-To run Master Mart on your computer locally, follow these steps:
-
-### 1. Prerequisite
-Make sure you have [Node.js](https://nodejs.org/) installed (version 18 or higher is recommended).
-
-### 2. Clone and Install Dependencies
 ```bash
-# Clone the repository (if downloaded via GitHub export)
-# Or unzip your downloaded ZIP file and navigate into the folder
-cd master-mart
+# 1. Configure environment (defaults target local MongoDB)
+cp .env.example .env        # then fill in BETTER_AUTH_SECRET, ADMIN_PASSWORD, …
 
-# Install npm dependencies
-npm install
+# 2. Make sure MongoDB is running locally (mongodb://127.0.0.1:27017)
 ```
 
-### 3. Start the Development Server
+### With Yarn
+
 ```bash
+yarn install
+
+# Port your old data (database.json first, gaps filled from data.ts)
+# and create the admin user from ADMIN_EMAIL / ADMIN_PASSWORD:
+yarn seed
+
+# Develop
+yarn dev
+
+# Full gate before any commit (typecheck → lint → build):
+yarn check
+```
+
+### With npm
+
+```bash
+npm install
+
+# Port your old data (database.json first, gaps filled from data.ts)
+# and create the admin user from ADMIN_EMAIL / ADMIN_PASSWORD:
+npm run seed
+
+# Develop
 npm run dev
-```
-The application will run on [http://localhost:3000](http://localhost:3000) or another available port shown in your terminal.
 
-### 4. Build for Production
-To bundle the application into highly-optimized static files for web servers (Vercel, Netlify, Cloudflare Pages, GitHub Pages):
+# Full gate before any commit (typecheck → lint → build):
+npm run check
+```
+
+### With Bun
+
 ```bash
-npm run build
-```
-This will generate a `dist/` directory containing the optimized HTML, JS, and CSS files.
+bun install
 
----
+# Port your old data (database.json first, gaps filled from data.ts)
+# and create the admin user from ADMIN_EMAIL / ADMIN_PASSWORD:
+bun run seed
 
-## 🌐 Deploying to GitHub & Hosting
+# Develop
+bun run dev
 
-### Option A: Using Google AI Studio Export (Easiest)
-1. In the Google AI Studio project page, click on the **Settings/Export** button in the top right menu.
-2. Select **Export to GitHub** or **Push to GitHub**.
-3. Authorize your GitHub account and select/create a repository to upload the code directly!
-
-### Option B: Manual Git Commands
-If you downloaded the code as a ZIP file:
-```bash
-# Initialize git repository
-git init
-
-# Add all files
-git add .
-
-# Commit changes
-git commit -m "Initial commit: Master Mart"
-
-# Create a new repository on github.com and link it
-git branch -M main
-git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPOSITORY_NAME.git
-
-# Push code to GitHub
-git push -u origin main
+# Full gate before any commit (typecheck → lint → build):
+bun run check
 ```
 
----
+Log into `/login` with the `ADMIN_EMAIL` / `ADMIN_PASSWORD` you set in `.env`.
 
-## 🌐 Deploying to Hostinger VPS (Prisma + MySQL + Node.js)
+## Architecture map
 
-To deploy Master Mart on your **Hostinger VPS** with a **MySQL** database, follow this comprehensive production guide:
+| Where | What |
+| --- | --- |
+| `app/` | Route shells only. `(public)` is statically prerendered; `admin/` is dynamic (session); `api/` holds route handlers for client-driven reads, upload, invoice, health. |
+| `modules/products,orders,reviews,settings,admin` | The actual application: Mongoose model, dual Zod schemas (DB vs form), `"use server"` actions, TanStack query-key factory + fetchers, domain components, public barrel `index.ts`. |
+| `core/` | Infrastructure: `config/site.ts` (ALL branding — rebrand happens here), `config/env.ts` (the only `process.env` reader, server-only), `db/`, `errors/`, `types/`. |
+| `components/ui` | shadcn-style primitives. `components/shared` — header, footer, hero, support bubble. |
+| `lib/` | Better Auth server/client/guards, query client, mailer, cloudinary, EN/BN dictionary. |
+| `proxy.ts` | Optimistic redirect for `/admin` — NOT a security boundary; every action re-checks `requireRole()`. |
+| `scripts/seed.ts` | Standalone tsx seeder (no `@/*` alias by design). |
 
-### 1. Prerequisites on your VPS
-Make sure your Hostinger VPS has **Node.js (v18+)**, **MySQL Server**, **Nginx**, and **Git** installed:
-```bash
-# Update package list & install tools
-sudo apt update
-sudo apt install -y git curl nginx mysql-server
+## Rendering contract (verify on every build)
 
-# Install Node.js v18 LTS
-curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-sudo apt-get install -y nodejs
+```
+○ /                    static — catalog fetched at build, revalidated by mutations
+○ /login               static shell
+● /products/[slug]     SSG via generateStaticParams
+ƒ /admin/**, /api/**   dynamic — session/API (expected)
+ƒ /track/[orderCode]   dynamic BY DESIGN — live data, client polls /api/orders/[code]
 ```
 
-### 2. Configure MySQL Database
-Log into your MySQL server as root and create a database and user:
-```sql
-sudo mysql -u root
+Every product/order/review/settings mutation calls `revalidatePath` for each
+route that renders its data — edit a product in the admin and the public page
+updates without a restart. Test that loop after `yarn build && yarn start`,
+`npm run build && npm run start`, or `bun run build && bun run start`.
 
--- Create master_mart database
-CREATE DATABASE master_mart;
+## Deliberate decisions (vs. the old app)
 
--- Create secure dedicated user
-CREATE USER 'mart_user'@'localhost' IDENTIFIED BY 'mart_secure_password_9134';
-GRANT ALL PRIVILEGES ON master_mart.* TO 'mart_user'@'localhost';
-FLUSH PRIVILEGES;
-EXIT;
-```
+- **Cart & language are client-only** (localStorage + context, never cookies) so
+  public routes stay static.
+- **Order tracking is server-driven.** The old app auto-simulated delivery in the
+  browser; now the admin pipeline (Placed → Preparing → On the way → Delivered)
+  is the source of truth, and `on_the_way` triggers the simulated Steadfast
+  dispatch. The tracker polls every 4 s.
+- **Orders are placed by product reference.** Prices, totals, delivery fee and
+  stock checks are computed server-side; the client can never set a price.
+- **Settings are split** — chat support is public; bKash/courier credentials are
+  admin-only and never reach the storefront (the old app sent them to every
+  browser).
+- **Payment gateways stay simulated** (sandbox dialog), same as before. The
+  bKash/SSLCommerz init endpoints were placeholders and can be added as real
+  integrations later inside `modules/orders`.
+- **Emails**: order confirmation/status invoices via SMTP when `SMTP_*` is set,
+  console log otherwise. Cloudinary uploads fall back to base64 data URLs when
+  `CLOUDINARY_*` is unset.
 
-### 3. Clone & Configure Environment Variables
-Clone your exported project repository on the VPS, navigate to it, and create your production `.env` file:
-```bash
-cd /var/www
-git clone <your-repo-link> master-mart
-cd master-mart
+## Deployment (Coolify + Nixpacks)
 
-# Install production dependencies
-npm install
-
-# Create .env file with MySQL Connection String & JWT / Cloudinary keys
-nano .env
-```
-Inside the `.env` file, populate these variables:
-```env
-PORT=3000
-NODE_ENV=production
-
-# MySQL Prisma connection string
-DATABASE_URL="mysql://mart_user:mart_secure_password_9134@localhost:3306/master_mart"
-
-# Admin Authentication Secret
-ADMIN_JWT_SECRET="mart-admin-jwt-token-9134-secret"
-JWT_SECRET="mart-session-secret"
-
-# Cloudinary Credentials (For dynamic image uploads)
-CLOUDINARY_CLOUD_NAME="your-cloudinary-cloud-name"
-CLOUDINARY_API_KEY="your-cloudinary-api-key"
-CLOUDINARY_API_SECRET="your-cloudinary-api-secret"
-
-# Payment gateway sandbox settings
-BKASH_APP_KEY="sandbox_app_key"
-BKASH_APP_SECRET="sandbox_app_secret"
-BKASH_USERNAME="sandbox_username"
-BKASH_PASSWORD="sandbox_password"
-
-SSLCOMMERZ_STORE_ID="sandbox_store_id"
-SSLCOMMERZ_STORE_PASSWORD="sandbox_store_password"
-SSLCOMMERZ_IS_SANDBOX="true"
-```
-
-### 4. Push Prisma Database Schema
-Generate Prisma Client and push your database tables instantly to MySQL:
-```bash
-# Generate typescript type-safe client
-npx prisma generate
-
-# Create tables instantly in MySQL
-npx prisma db push
-```
-
-### 5. Build and Start Node Express Server
-Build the optimized frontend assets and bundle the backend using PM2 to manage the node process persistently:
-```bash
-# Build frontend + server CJS bundle
-npm run build
-
-# Install PM2 globally
-sudo npm install -g pm2
-
-# Start the bundled app and save process to restart on VPS reboot
-pm2 start dist/server.cjs --name "master-mart"
-pm2 save
-pm2 startup
-```
-
-### 6. Set Up Nginx Reverse Proxy
-To make Master Mart accessible to the internet via your domain or public VPS IP address, configure Nginx as a reverse proxy:
-```bash
-sudo nano /etc/nginx/sites-available/master-mart
-```
-Paste this Nginx block:
-```nginx
-server {
-    listen 80;
-    server_name yourdomain.com www.yourdomain.com <YOUR_VPS_IP>;
-
-    location / {
-        proxy_pass http://localhost:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
-    }
-}
-```
-Enable the Nginx config and restart the web server:
-```bash
-sudo ln -s /etc/nginx/sites-available/master-mart /etc/nginx/sites-enabled/
-sudo nginx -t
-sudo systemctl restart nginx
-```
-
----
-
-*Crafted with precision for a smooth, reliable, and premium shopping experience.*
+`nixpacks.toml` is in place. Follow CLAUDE.md §12 — in particular set stable
+`NEXT_SERVER_ACTIONS_ENCRYPTION_KEY`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`
+(= `siteConfig.siteUrl` exactly), mark build-time env vars, keep a single
+replica, and make sure MongoDB is reachable **during** the build.
